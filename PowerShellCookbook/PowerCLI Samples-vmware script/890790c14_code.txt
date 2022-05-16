@@ -1,0 +1,518 @@
+################################################################
+# Listing 14.1: Resource limits and reservations
+################################################################
+$report=@()
+foreach ($vm in Get-VM | Get-VMResourceConfiguration) {
+  if (($vm.CpuReservationMhz -ne '0') -or
+    ($vm.CpuLimitMhz -ne '-1') -or
+    ($vm.MemReservationMB -ne '0') -or
+    ($vm.MemLimitMB -ne '-1')) {
+    $Report += $vm
+  }
+}
+$report | Format-Table
+
+################################################################
+# Listing 14.2: Get-VMGuestDiskUsage
+################################################################
+function Get-VMGuestDiskUsage {
+<#
+.SYNOPSIS
+  Gets a vm's guest OS disk usage information
+.DESCRIPTION
+  This function creates a report with disk usage information
+  of the vm's guest OS
+.NOTES
+  Source:  Automating vSphere Administration
+  Authors: Luc Dekens, Arnim van Lieshout, Jonathan Medd,
+           Alan Renouf, Glenn Sizemore
+.PARAMETER VM
+  The VM object to create a report on
+.EXAMPLE
+  PS> Get-VMGuestDiskUsage -VM (Get-VM WIN*)
+.EXAMPLE
+  PS> Get-VM | Get-VMGuestDiskUsage
+#>
+
+  param(
+    [parameter(valuefrompipeline = $true, mandatory = $true,
+      HelpMessage = "Enter a vm entity")]
+    [VMware.VimAutomation.ViCore.Impl.V1.Inventory.VirtualMachineImpl]$VM)
+
+  process {
+#Hide errors which appear if VMware Tools is not installed or VM is PoweredOff
+    $ErrorActionPreference = "SilentlyContinue"
+
+    foreach ($disk in $VM.Guest.disks) {
+      $objDisk = New-Object System.Object
+      $objDisk | Add-Member -MemberType NoteProperty -Name VM -Value $VM.Name 
+      $objDisk | Add-Member -MemberType NoteProperty -Name Volume -Value $disk.Path
+      $objDisk | Add-Member -MemberType NoteProperty -Name CapacityMB -Value ([math]::Round($disk.Capacity / 1MB))
+      $objDisk | Add-Member -MemberType NoteProperty -Name FreeSpaceMB -Value ([math]::Round($disk.FreeSpace/1MB))
+      $objDisk | Add-Member -MemberType NoteProperty -Name Usage% -Value ("{0:p2}" -f (($disk.Capacity - $disk.FreeSpace ) / $disk.Capacity))
+      $objDisk
+    }
+  }
+}
+
+################################################################
+# Listing 14.3: Host bus adapter report
+################################################################
+$hbaReport = @()
+foreach ($cluster in Get-cluster) {
+  foreach ($vmHost in @($cluster | Get-vmhost)) {
+    foreach ($hba in @($vmHost | Get-VMHostHba)) {
+      $objHba = "" | Select ClusterName,HostName,Pci,Device,Type,Model,Status,Wwpn
+      $objHba.ClusterName = $cluster.Name
+      $objHba.HostName = $vmhost.Name
+      $objHba.Pci = $hba.Pci
+      $objHba.Device = $hba.Device
+      $objHba.Type = $hba.Type
+      $objHba.Model = $hba.Model
+      $objHba.Status = $hba.Status
+      $objHba.Wwpn = "{0:x}" -f $hba.PortWorldWideName
+      $hbaReport += $objHba
+    }
+  }
+}
+
+$hbaReport | Export-Csv HbaReport.csv
+
+################################################################
+# Listing 14.4: Network interface cards report
+################################################################
+$nicReport=@()
+foreach ($cluster in Get-cluster) {
+  foreach ($vmHost in @($cluster | Get-vmhost)) {
+    foreach ($nic in @($VMHost | Get-VMHostNetworkAdapter)) {
+      $objNic = "" | Select ClusterName,HostName,Pci,DeviceName,Mac,BitRatePerSec,FullDuplex
+      $objNic.ClusterName = $cluster.Name
+      $objNic.HostName = $vmHost.Name
+      $objNic.Pci = $nic.ExtensionData.Pci
+      $objNic.DeviceName = $nic.DeviceName
+      $objNic.Mac = $nic.Mac
+      $objNic.BitRatePerSec = $nic.BitRatePerSec
+      $objNic.FullDuplex = $nic.FullDuplex
+      if ($nic.ExtensionData.Pci) {
+        $nicReport += $ObjNic
+      }
+    }
+  }
+}
+$nicReport | Export-Csv NicReport.csv
+
+################################################################
+# Listing 14.5: The Get-VMHostPciDevice function
+################################################################
+function Get-VMHostPciDevice {
+<#
+.SYNOPSIS
+  Returns the ESX(i) host's PCI Devices
+.DESCRIPTION
+  This function returns the ESX(i) host's PCI devices and the associated 
+  ESX devices. Pci device information is downloaded from http://pci-ids.ucw.cz/
+.NOTES
+  Source:  Automating vSphere Administration
+  Authors: Luc Dekens, Arnim van Lieshout, Jonathan Medd,
+           Alan Renouf, Glenn Sizemore
+.PARAMETER VMHost
+  The ESX(i) host entity for which the PCI devices should be returned
+.PARAMETER forceDownload
+  Switch parameter to force a download of the pci information
+.EXAMPLE
+  PS> Get-VMHostPciDevice -VMHost (Get-VMHost "esx001")
+.EXAMPLE
+  PS> Get-VMHost "esx001" | Get-VMHostPciDevice
+#>
+
+  Param (
+  [parameter(valuefrompipeline = $true, mandatory = $true,
+    HelpMessage = "Enter an ESX(i) host entity")]
+  [VMware.VimAutomation.ViCore.Impl.V1.Inventory.VMHostImpl]$VMHost,
+  [Switch]$forceDownload)
+
+  Begin {
+    $urlPci = "http://pci-ids.ucw.cz/v2.2/pci.ids"
+    $filename = "pci.ids"
+    $pciDevices= @{}
+# Download file if not present or if forced download
+    if(!(Test-Path $filename) -or $forceDownload){
+      $web = New-Object net.WebClient
+      $web.downloadfile($urlPCI,$filename)
+    }
+# Read file into hash tab
+    Get-Content $filename | where {$_.Length -ne 0 -and $_[0] -ne "#"} | %{
+      if($_[0] -eq "`t"){
+        if($_[1] -eq "`t"){
+          $subdeviceId = $_.Substring(2,4)
+          if(!$pciDevices[$vendorId].deviceTab.ContainsKey($subdeviceId)){
+            $pciDevices[$vendorId].deviceTab[$subdeviceId] = 
+              $_.Substring(6).TrimStart(" ")
+          }
+        }
+        else{
+          $deviceId = "0x" + $_.Substring(1,4)
+          if(!$pciDevices[$vendorId].deviceTab.ContainsKey($deviceId)){
+            $pciDevices[$vendorId].deviceTab[$deviceId] = 
+              $_.Substring(5).TrimStart(" ")
+          }
+        }
+      }
+      else{
+        $vendorId = "0x" + $_.Substring(0,4)
+        if(!$pciDevices.ContainsKey($vendorId)){
+          $pciDevices[$vendorId] = New-Object PSObject -ArgumentList @{
+            Vendor = $_.Substring(4).TrimStart(" ")
+            deviceTab = @{}
+          }
+        }
+      }
+    }
+# Create PCI class array
+    $PciClass = @("Unclassified device","Mass storage controller",
+      "Network controller","Display controller","Multimedia controller",
+      "Memory controller","Bridge","Communication controller",
+      "Generic system peripheral","Input device controller",
+      "Docking station","Processor","Serial bus controller",
+      "Wireless controller","Intelligent controller",
+      "Satellite communications controller"," Encryption controller",
+      "Signal processing controller")
+  }
+
+  Process {
+# Get the host's PCI Devices
+    $hostDevices = @()
+    foreach ($dev in $VMHost.ExtensionData.Hardware.PciDevice) {
+      $strVendorId = "0x" + "{0}" -f 
+        [Convert]::ToString($dev.VendorId,16).ToUpper().PadLeft(4, '0')
+      $strDeviceId = "0x" + "{0}" -f 
+        [Convert]::ToString($dev.DeviceId,16).ToUpper().PadLeft(4, '0')
+      $objDevice = "" | 
+        Select Pci, ClassName, VendorName, DeviceName, EsxDeviceName
+      $objDevice.Pci = $dev.Id
+      $objDevice.ClassName = $PciClass[[int]($dev.ClassId/256)]
+      if($pciDevices.ContainsKey($strVendorId)){
+        $objDevice.VendorName = $pciDevices[$strVendorId].Vendor
+      }
+      else{
+        $objDevice.VendorName = $strVendorId
+      }
+      if($pciDevices[$strVendorId].deviceTab.ContainsKey($strDeviceId)){
+        $objDevice.DeviceName = 
+          $pciDevices[$strVendorId].deviceTab[$strDeviceId]
+      }
+      else{
+        $objDevice.DeviceName = $strDeviceId
+      }
+      $hostDevices += $objDevice
+    }
+  
+# Find associated ESX storage devices
+    foreach ($hba in $_.ExtensionData.Config.StorageDevice.HostBusAdapter) {
+      $hostDevices | ? {$_.Pci -match $hba.Pci} | % {
+        $_.EsxDeviceName = "["+$hba.device+"]"}
+    }
+
+# Find associated ESX network devices
+    foreach ($nic in $_.ExtensionData.Config.Network.Pnic) {
+      $hostDevices | ? {$_.Pci -match $nic.Pci} | % {
+        $_.EsxDeviceName = "["+$nic.device+"]"}
+    }
+    $hostDevices
+  }
+}
+
+################################################################
+# Listing 14.6 Get-ClusterSummary
+################################################################
+function Get-ClusterSummary {
+<#
+.SYNOPSIS
+  Gets summary information from the cluster
+.DESCRIPTION
+  This function creates a report with summary information of the
+  cluster
+.NOTES
+  Source:  Automating vSphere Administration
+  Authors: Luc Dekens, Arnim van Lieshout, Jonathan Medd,
+           Alan Renouf, Glenn Sizemore
+.PARAMETER Cluster
+  The cluster object to create a report on
+.EXAMPLE
+  PS> Get-ClusterSummary -Cluster (Get-Cluster CL01)
+.EXAMPLE
+  PS> Get-Cluster | Get-ClusterSummary
+#>
+
+  param(
+    [parameter(valuefrompipeline = $true, mandatory = $true,
+      HelpMessage = "Enter a cluster entity")]
+    [VMware.VimAutomation.ViCore.Impl.V1.Inventory.ClusterImpl]$cluster)
+
+  process {
+    $objCluster = "" | Select ClusterName, NumHost, NumVM, NumDatastore, NumNetwork, AssignedCpu, NumCores, `
+        vCpuPerCore, TotalCpuGHz, TotalMemGB, AssignedMemGB, MemUsagePct
+    $vm = @($cluster | Get-VM)
+    $objCluster.ClusterName = $cluster.Name
+    $objCluster.NumHost = $cluster.ExtensionData.Summary.NumHosts
+    $objCluster.NumVM = $vm.Count
+    $objCluster.NumDatastore = $cluster.ExtensionData.Datastore.Count
+    $objCluster.NumNetwork = $cluster.ExtensionData.Network.Count
+    $objCluster.AssignedCpu = ($vm | Where {$_.PowerState -eq "PoweredOn"} | Measure-Object -Property NumCpu -Sum).Sum
+    $objCluster.NumCores = $cluster.ExtensionData.Summary.NumCpuCores
+    $objCluster.vCpuPerCore = "{0:n2}" -f ($objCluster.AssignedCpu / $objCluster.NumCores)
+    $objCluster.TotalCpuGhz = "{0:n2}" -f ($cluster.ExtensionData.Summary.TotalCpu / 1000)
+    $objCluster.TotalMemGB = "{0:n2}" -f ($cluster.ExtensionData.Summary.TotalMemory / 1GB)
+    $objCluster.AssignedMemGB = "{0:n2}" -f (($vm | Where {$_.PowerState -eq "PoweredOn"} | Measure-Object -Property MemoryMB -Sum).Sum / 1024)
+    $objCluster.MemUsagePct = "{0:p2}" -f ($objCluster.AssignedMemGB / $objCluster.TotalMemGB)
+    $objCluster
+  }
+}
+
+################################################################
+# Listing 14.7 Get-MissingPortgroups
+################################################################
+function Get-MissingPortgroups {
+<#
+.SYNOPSIS
+  Gets the inconsistent virtual portgroups in a cluster
+.DESCRIPTION
+  This function creates a report of the inconsistent portgroups
+  in a cluster. It reports which portgroups are missing on which
+  host.
+.NOTES
+  Source:  Automating vSphere Administration
+  Authors: Luc Dekens, Arnim van Lieshout, Jonathan Medd,
+           Alan Renouf, Glenn Sizemore
+.PARAMETER Cluster
+  The cluster object to check
+.EXAMPLE
+  PS> Get-MissingPortGroups -Cluster (Get-Cluster CL01)
+.EXAMPLE
+  PS> Get-Cluster | Get-MissingPortGroups
+#>
+
+  param(
+   [parameter(valuefrompipeline = $true, mandatory = $true,
+     HelpMessage = "Enter a cluster entity")]
+   [VMware.VimAutomation.ViCore.Impl.V1.Inventory.ClusterImpl]$cluster)
+
+  process{
+#create an array with all available portgroups in the cluster
+    $clusterHosts = @($cluster | Get-VMHost)
+    $refPortGroups = @($clusterHosts | Get-VirtualPortGroup | Select-Object -Unique)
+  
+#compare the hosts against the reference array
+    foreach ($vmHost in $clusterHosts) {
+      $difPortGroups = @($vmHost | Get-VirtualPortGroup)
+      $differences = @(Compare-Object $refPortGroups $difPortGroups)
+      foreach ($item in $differences) {
+        $objPG = "" | Select Cluster,HostName,MissingPortGroup
+        $objPG.Cluster = $cluster
+        $objPG.HostName = $vmHost.Name
+        $objPG.MissingPortGroup = $item.InputObject
+        $objPG
+      }
+    }
+  }
+}
+
+################################################################
+# Listing 14.8 Export-Xls
+################################################################
+#requires -version 2
+
+function Export-Xls{
+  <#
+.SYNOPSIS
+  Saves Microsoft .NET Framework objects to a worksheet in an
+  XLS file
+.DESCRIPTION
+  The Export-Xls function allows you to save Microsoft .NET
+  Framework objects to a named worksheet in an Excel file
+  (type XLS). The position of the worksheet can be specified.
+.NOTES
+  Source:  Automating vSphere Administration
+  Authors: Luc Dekens, Arnim van Lieshout, Jonathan Medd,
+           Alan Renouf, Glenn Sizemore
+.PARAMETER InputObject
+  Specifies the objects to be written to the worksheet.
+  The parameter accepts objects through the pipeline.
+.PARAMETER Path
+  Specifies the path to the XLS file.
+.PARAMETER WorksheetName
+  The name for the new worksheet. If not specified the name will
+  be "Sheet" followed by the "Ticks" value
+.PARAMETER SheetPosition
+  Specifies where the new worksheet will be inserted in the
+  series of existing worksheets. You can specify "begin" or
+  "end". The default is "begin".
+.PARAMETER ChartType
+  Specifies the type of chart you want add to the worksheet.
+  All types in the [microsoft.Office.Interop.Excel.XlChartType]
+  enumeration are accepted.
+.PARAMETER NoTypeInformation
+  Omits the type information from the worksheet. The default is
+  to include the "#TYPE" line.
+.PARAMETER AppendWorksheet
+  Specifies if the worksheet should keep or remove the existing
+  worksheet in the spreadsheet. The default is to append.
+.EXAMPLE
+  PS> $data = Get-Process | Select-Object Name, Id, WS
+  PS> Export-Xls $data C:\Reports\MyWkb.xls -WorksheetName "WS" -AppendWorksheet:$false
+.EXAMPLE
+  PS> $data = Get-Process | Select-Object Name, Id, WS
+  PS> Export-Xls $data C:\Reports\MyWkb.xls -SheetPosition "end"
+.EXAMPLE
+  PS> $data = Get-Process | Select-Object Name, Id, WS
+  PS> Export-Xls $data C:\Reports\MyWkb.xls -WorksheetName "WS" -ChartType "xlColumnClustered"
+#>
+  param(
+  [parameter(ValueFromPipeline = $true,Position=1)]
+  [ValidateNotNullOrEmpty()]
+    $InputObject,
+  [parameter(Position=2)]
+  [ValidateNotNullOrEmpty()]
+    [string]$Path,
+    [string]$WorksheetName = ("Sheet " + (Get-Date).Ticks),
+    [string]$SheetPosition = "begin",
+    [PSObject]$ChartType,
+    [switch]$NoTypeInformation = $true,
+    [switch]$AppendWorksheet = $true
+  )
+
+  begin{
+    [System.Reflection.Assembly]::LoadWithPartialName("Microsoft.Office.Interop.Excel")
+    if($ChartType){
+      [microsoft.Office.Interop.Excel.XlChartType]$ChartType = $ChartType
+    }
+    
+    function Set-ClipBoard{
+      param(
+        [string]$text
+      )
+      process{
+        Add-Type -AssemblyName System.Windows.Forms
+        $tb = New-Object System.Windows.Forms.TextBox
+        $tb.Multiline = $true
+        $tb.Text = $text
+        $tb.SelectAll()
+        $tb.Copy()
+      }
+    }
+
+    function Add-Array2Clipboard {
+      param (
+        [PSObject[]]$ConvertObject,
+        [switch]$Header
+      )
+      process{
+        $array = @()
+        
+        if ($Header) {
+          $line =""
+          $ConvertObject | Get-Member -MemberType Property,NoteProperty,CodeProperty | Select -Property Name | %{
+            $line += ($_.Name.tostring() + "`t")
+          }
+          $array += ($line.TrimEnd("`t") + "`r")
+        }
+        else {
+          foreach($row in $ConvertObject){
+            $line =""
+            $row | Get-Member -MemberType Property,NoteProperty | %{
+              $Name = $_.Name
+              if(!$Row.$Name){$Row.$Name = ""}
+              $line += ([string]$Row.$Name + "`t")
+            }
+            $array += ($line.TrimEnd("`t") + "`r")
+          }
+        }
+        Set-ClipBoard $array
+      }
+    }
+
+    $excelApp = New-Object -ComObject "Excel.Application"
+    $originalAlerts = $excelApp.DisplayAlerts
+    $excelApp.DisplayAlerts = $false
+    if(Test-Path -Path $Path -PathType "Leaf"){
+      $workBook = $excelApp.Workbooks.Open($Path)
+    }
+    else{
+      $workBook = $excelApp.Workbooks.Add()
+    }
+    $sheet = $excelApp.Worksheets.Add($workBook.Worksheets.Item(1))
+    if(!$AppendWorksheet){
+      $workBook.Sheets | where {$_ -ne $sheet} | %{$_.Delete()}
+    }
+    $sheet.Name = $WorksheetName
+    if($SheetPosition -eq "end"){
+      $nrSheets = $workBook.Sheets.Count
+      2..($nrSheets) |%{
+        $workbook.Sheets.Item($_).Move($workbook.Sheets.Item($_ - 1))
+      }
+    }
+    $sheet.Activate()
+    $array = @()
+  }
+
+  process{
+    $array += $InputObject
+  }
+
+  end{
+    Add-Array2Clipboard $array -Header:$True
+    $selection = $sheet.Range("A1")
+    $selection.Select() | Out-Null
+    $sheet.Paste()
+    $Sheet.UsedRange.HorizontalAlignment = [microsoft.Office.Interop.Excel.XlHAlign]::xlHAlignCenter
+    Add-Array2Clipboard $array
+    $selection = $sheet.Range("A2")
+    $selection.Select() | Out-Null
+    $sheet.Paste() | Out-Null
+    $selection = $sheet.Range("A1")
+    $selection.Select() | Out-Null
+
+    $sheet.UsedRange.EntireColumn.AutoFit() | Out-Null
+    $workbook.Sheets.Item(1).Select()
+    if($ChartType){
+      $sheet.Shapes.AddChart($ChartType) | Out-Null
+    }
+    $workbook.SaveAs($Path)
+    $excelApp.DisplayAlerts = $originalAlerts
+    $excelApp.Quit()
+    Stop-Process -Name "Excel"
+  }
+}
+
+################################################################
+# Listing 14.9 A custom HTML report
+################################################################
+$html = @"
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html><head>
+<title>My Fancy Html Report</title>
+<style>
+body {background-color: coral;}
+table {border-collapse: collapse; border-width: 1px;
+    border-style: solid; border-color: black;}
+tr {padding: 5px;}
+th {border-width: 1px; border-style: solid; border-color: black;
+    background-color: blue; color: white;}
+td {border-width: 1px; border-style: solid; border-color: black;
+    background-color: palegreen;}
+</style>
+</head><body>
+"@
+
+$html += "<h2>Network Interface Cards</h2>”
+$html += $nicReport | ConvertTo-Html -Fragment
+
+$html += "<h2>Host Bus Adapters</h2>"
+$html += $hbaReport | ConvertTo-Html -Fragment
+
+$html += @"
+</body>
+</html>
+"@
+
+$html > nicreport.html

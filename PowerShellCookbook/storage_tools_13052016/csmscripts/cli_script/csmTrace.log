@@ -1,0 +1,37 @@
+2014-01-22 11:45:36.740-0500 main RepMgr   RmCli main INFO: defaultCharset: UTF-8
+2014-01-22 11:45:41.515-0500 main RepMgr e com.ibm.storage.mdm.cli.rm.RmGlobal RmGlobal constructor, authProps java.io.FileNotFoundException: /root/tpcr-cli/tpcrcli-auth.properties (No such file or directory)
+	at java.io.FileInputStream.<init>(FileInputStream.java:112)
+	at com.ibm.storage.mdm.cli.rm.RmGlobal.initialize(Unknown Source)
+	at com.ibm.storage.mdm.cli.rm.RmGlobal.<init>(Unknown Source)
+	at com.ibm.storage.mdm.cli.rm.RmGlobal.getInstance(Unknown Source)
+	at com.ibm.storage.mdm.cli.rm.RmCli.main(Unknown Source)
+
+2014-01-22 11:45:45.597-0500 main RepMgr   com.ibm.storage.perfcollect.handlers.ConfigHandler readPassword() INFO: Using native method
+2014-01-22 11:45:53.989-0500 main RepMgr   RmCli main() local server name is: fcis634.fmc1.ford.com
+2014-01-22 11:45:53.990-0500 main RepMgr   RmCli main() INFO: Version = Tivoli Storage Productivity Center for Replication Command Line Interface (CLI)
+ Copyright 2007, 2009 IBM Corporation
+ Version: 4.2.2.4 
+ Build: k20130529-1228 
+ Server: fcis634.fmc1.ford.com Port: 5110 
+ Authentication file: N/A
+2014-01-22 11:45:53.991-0500 main RepMgr   com.ibm.storage.mdm.cli.rm.RmGlobal RmGlobal.ctor() about to log onto server tpcr1.ford.com at port 5110 as user $jlarrow.
+2014-01-22 11:46:27.804-0500 main RepMgr   lssess logParameters INFO: cptype=, status=, session_name=, help=, h=, ?=, OutputFormat=default, pager=off, Delimiter_Character=,, TableHeaders=on, Rows=24, verbose=off
+2014-01-22 11:46:27.804-0500 main RepMgr > com.ibm.storage.mdm.cli.rm.mchandler.LssessHandler lssess Entry
+2014-01-22 11:46:27.805-0500 main RepMgr   com.ibm.storage.mdm.cli.rm.mchandler.LssessHandler lssess no session names were specified
+2014-01-22 11:46:27.805-0500 main RepMgr   com.ibm.storage.mdm.cli.rm.mchandler.LssessHandler lssess calling get session overviews
+2014-01-22 11:47:15.525-0500 main RepMgr < com.ibm.storage.mdm.cli.rm.mchandler.LssessHandler lssess Exit
+2014-01-22 11:54:04.259-0500 main RepMgr   lssess logParameters INFO: cptype=, status=, session_name=, help=, h=, ?=, OutputFormat=default, pager=off, Delimiter_Character=,, TableHeaders=on, Rows=24, verbose=off
+2014-01-22 11:54:04.260-0500 main RepMgr > com.ibm.storage.mdm.cli.rm.mchandler.LssessHandler lssess Entry
+2014-01-22 11:54:04.260-0500 main RepMgr   com.ibm.storage.mdm.cli.rm.mchandler.LssessHandler lssess no session names were specified
+2014-01-22 11:54:04.260-0500 main RepMgr   com.ibm.storage.mdm.cli.rm.mchandler.LssessHandler lssess calling get session overviews
+2014-01-22 11:54:37.836-0500 main RepMgr < com.ibm.storage.mdm.cli.rm.mchandler.LssessHandler lssess Exit
+2014-01-22 11:55:15.004-0500 main RepMgr   lssess logParameters INFO: cptype=, status=, session_name=O2AIXLAB_fclas088-FCBootMirror, help=, h=, ?=, OutputFormat=default, pager=off, Delimiter_Character=,, TableHeaders=on, Rows=24, verbose=off
+2014-01-22 11:55:15.004-0500 main RepMgr > com.ibm.storage.mdm.cli.rm.mchandler.LssessHandler lssess Entry
+2014-01-22 11:55:15.005-0500 main RepMgr   com.ibm.storage.common.meta.client.MetaMethod validateSessionName attempting to validate session name=O2AIXLAB_fclas088-FCBootMirror
+2014-01-22 11:55:15.005-0500 main RepMgr   com.ibm.storage.mdm.cli.rm.mchandler.LssessHandler lssess calling get session overviews
+2014-01-22 11:55:37.642-0500 main RepMgr < com.ibm.storage.mdm.cli.rm.mchandler.LssessHandler lssess Exit
+2014-01-22 11:57:18.684-0500 main RepMgr   lssess logParameters INFO: cptype=, status=, session_name=, help=, h=, ?=, OutputFormat=2, pager=off, Delimiter_Character=:, TableHeaders=on, Rows=24, verbose=off
+2014-01-22 11:57:18.684-0500 main RepMgr > com.ibm.storage.mdm.cli.rm.mchandler.LssessHandler lssess Entry
+2014-01-22 11:57:18.685-0500 main RepMgr   com.ibm.storage.mdm.cli.rm.mchandler.LssessHandler lssess no session names were specified
+2014-01-22 11:57:18.685-0500 main RepMgr   com.ibm.storage.mdm.cli.rm.mchandler.LssessHandler lssess calling get session overviews
+2014-01-22 11:57:37.978-0500 main RepMgr < com.ibm.storage.mdm.cli.rm.mchandler.LssessHandler lssess Exit

@@ -1,0 +1,24 @@
+# Restricted Runspaces are a way to craft an execution environment
+# for running potentially hostile requests
+# This demo shows some of the mechanisms for Restricted Runspaces.
+#
+# 
+$ExecutionContext.SessionState | fl *
+$ExecutionContext.SessionState.LanguageMode = "test"
+ping localhost -n 1
+ipconfig
+$ping = Get-Command ping
+$ExecutionContext.SessionState.Applications.Clear()
+ping localhost -n 1
+ipconfig
+$ExecutionContext.SessionState.Applications.add($ping.Definition)
+ping localhost -n 1
+ipconfig
+$ExecutionContext.SessionState.Applications.add("*")
+ping localhost -n 1
+ipconfig
+
+
+
+
+

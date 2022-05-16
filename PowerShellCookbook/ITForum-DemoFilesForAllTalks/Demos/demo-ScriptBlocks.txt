@@ -1,0 +1,67 @@
+# ScriptBlocks are very powerfull
+# You are already use them today
+#
+# WHERE takes a scriptblock.  It assigns the current object to the
+# variable $_ and executes the scriptblock.  If it returns TRUE,
+# the object is passed on
+Get-Process | where {$_.handles -ge 700}
+# NOTE: the scriptblock can do ANYTHING
+Get-Process *ss| where {$true}
+Get-Process *ss| where {$false}
+# PowerShell just assigns the current object to $_ and executions
+# the scriptblock
+cls
+# Scriptblocks can be as long or as complicated as you like
+scat filter.ps1
+# Let's import that scriptblock
+. .\filter.ps1
+# Now we'll use it in a where
+Get-Process | where $s
+# PowerShell's WHERE is incredibly powerful because you can do anything you want in
+# your scriptblock.  It can be as simple as a single expression or as complicated
+# as a multi page script
+cls
+# Most utitilies that take properties will also accept Scriptblocks
+gps [a-f]* |ft name,{$_.Name.TOUPPER()}, {[Math]::ROUND($_.Handles /100)} -auto
+# Let's clean that up by providing a hash table with a LABEL and an EXPRESSION
+$H1 = @{LABEL = "NAME";      EXPRESSION = {$_.Name.ToUpper()}}
+$H2 = @{LABEL = "RESOURCES"; EXPRESSION = {[Math]::Round($_.Handles /100)}}
+gps [a-f]* |ft name,$H1,$H2 -auto
+# If something takes a property - there is a good chance it takes a scriptblock
+gps |Group product |Sort name
+# Imagine that you wanted to reduce the precision
+gps |Group {$_.product.SUBSTRING(0,9)} |Sort name
+# That produced an error because some items don't have any values and some values are short
+# But remember: YOU CAN DO ANYTHING IN A SCRIPTBLOCK!
+gps |group { if ($_.product) {$_.Product.PadRight(10).Substring(0,9)}} |sort name
+cls
+#########################################################
+#ScriptBlocks are first class datatypes
+$s = {Get-Date}
+# There are 3 ways to invoke a scripblock:
+# 1) .INVOKE()
+$s.Invoke()
+# 2) & (the "invoke operator")
+&$s
+# 3) . (dot sourcing)
+.$s
+# Let's examine the difference between invoking and dot sourcing
+$d = "ORIGINAL VALUE"
+$s = {$d = Get-Date; $d}
+&$s
+$d
+# Invoking with an & runs it in a new SCOPE so changes to
+# variables are discarded upon return.  So what that means is 
+# that an INVOKE or a &$s runs the scriptblock in a new
+# SCOPE which exits when done.  
+.$s
+$d
+# Dot Sourcing runs the scriptbock in the current
+# SCOPE so changes to variables persist
+cls
+# Scriptblocks can take parameters
+$till = {param([DateTime]$End, [DateTime]$Start=[DateTime]::Now) ($End - $Start).Days}
+&$till "12/25/2007"
+&$till -start "7/4/2007" -End "12/25/2007"
+# You can pipeline to ScriptBlocks that have Begin Process End blocks
+gps |&{Begin {$t = 0} Process {$t += $_.handles} End {"Total Handles = $t"}}

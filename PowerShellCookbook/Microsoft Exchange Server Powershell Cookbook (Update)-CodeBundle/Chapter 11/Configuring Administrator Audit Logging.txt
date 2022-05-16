@@ -1,0 +1,26 @@
+Example 1:
+
+Get-AdminAuditLogConfig 
+
+Set-AdminAuditLogConfig -AdminAuditLogEnabled $true
+
+
+Example 2:
+
+Set-AdminAuditLogConfig `
+-AdminAuditLogCmdlets Set-Mailbox,Set-CASMailbox
+
+
+Example 3:
+
+Set-AdminAuditLogConfig -AdminAuditLogExcludedCmdlets New-Mailbox
+
+
+Example 4:
+
+Set-AdminAuditLogConfig -TestCmdletLoggingEnabled $true
+
+
+Example 5:
+
+Set-AdminAuditLogConfig -TestCmdletLoggingEnabled $false

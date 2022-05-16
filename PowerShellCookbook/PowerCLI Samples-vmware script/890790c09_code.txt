@@ -1,0 +1,1308 @@
+
+
+# Listing 9.1 Get-OvfDetails Function
+################################################################
+Function Get-OvfDetails
+{
+    Param(
+        [Parameter(ValueFromPipeline=$true
+        ,    ValueFromPipelineByPropertyName=$True)]
+        [ValidateScript({Test-Path $_})]
+        [ValidatePattern('.ovf$')]
+        [Alias("PSPath")]
+        [string]
+        $Path
+    )
+    Begin
+    {
+        $pdp = New-Object VMware.Vim.OvfParseDescriptorParams
+        $pdp.locale = ""
+        $pdp.deploymentOption = ""
+    }
+    Process
+    {
+        $OvfM = Get-View -Id 'OvfManager-OvfManager'
+        $OvfM.ParseDescriptor( `
+            (Get-Content $path|Out-String),$pdp)
+    }
+}
+
+################################################################
+#Listing 9.2: Importing vMA OVF into vCenter
+################################################################
+$VMHost = Get-VMHost "vSphere03*"
+$PathtoOvf = ".\vMA-4.1.0.0-268837.ovf"
+
+# Parse OVF
+$OVF = Get-OvfDetails -Path $PathtoOvf
+# Convert to MB
+$Size = $ovf.ApproximateFlatDeploymentSize/1mb
+# find appropriate datastore
+$DS = Get-Datastore -VMHost $VMHost|
+    Where-Object {$_.FreeSpaceMB -gt $Size} |
+    Sort-Object FreeSpaceMB -Descending |
+    Select-Object -First 1    
+#Import our vApp
+Import-VApp -Source $PathtoOvf
+    -Name 'vMA4.1'
+    -VMHost $VMHost
+    -Datastore $DS
+
+################################################################
+# Listing 9.3: Create a new vApp
+################################################################
+New-VApp -Name App01 `
+    -Location (get-cluster prod01) `
+    -CpuExpandableReservation $true `
+    -CpuReservationMhz 4000 `
+    -MemExpandableReservation $true `
+    -MemReservationMB (3gb/1mb)
+	
+################################################################
+# Listing 9.4: Clone an existing vApp
+################################################################
+New-VApp -Name App02 `
+    -Location (get-cluster prod01) `
+    -vApp (Get-VApp App01) `
+    -Datastore vmdata0
+
+################################################################
+# Listing 9.5: Exporting an existing  vApp
+################################################################
+Export-VApp -VApp (Get-VApp App02) `
+    -Name "app02_$(Get-Date -Format MM_dd_yyyy)"
+
+################################################################
+# Listing 9.6: Importing a vApp from OVF
+################################################################
+Import-VApp -Source .\app02_10_29_2010.ovf
+    -Name 'App02'
+    -VMHost 'vShere01*'
+    -Datastore ISCSI_03
+
+################################################################
+# Listing 9.7: Add VMs to an existing vApp
+################################################################
+Get-VM vMA4.1, SQL01, VUM01| 
+    Move-VM -Destination (Get-VApp -Name 'App01')
+	
+################################################################
+# Listing 9.8: Function Get-vAppStartOrder
+################################################################
+Function Get-vAppStartOrder
+{
+  <#
+  .SYNOPSIS
+    Get the vApp Startup Order for a given VM
+  .DESCRIPTION
+    Get the vApp Startup Order for a given VM if no VM is 
+    provided will return the startup order for every VM 
+    in the vApp.
+  .PARAMETER VM
+    VM to retrieve the startup order for.
+  .PARAMETER vApp
+    vApp to rerieve the startup order from.
+  .EXAMPLE
+    Get-vApp | Get-vAppStartOrder
+  .EXAMPLE
+    Get-vAppStartOrder -VM (get-vm sql01)
+  #>
+  [cmdletbinding()]
+  Param(
+    [Parameter(ValueFromPipeline=$True)]
+    [VMware.VimAutomation.ViCore.Impl.V1.Inventory.VirtualMachineImpl]
+    $VM
+  ,
+    [Parameter(ValueFromPipeline=$True)]
+    [VMware.VimAutomation.ViCore.Impl.V1.Inventory.VAppImpl]
+    $vApp
+  )
+  Process
+  {
+    if ($VM)
+    {
+      Try
+      {
+        $vApp = Get-VIObjectByVIView $vm.ExtensionData.ParentVApp
+      }
+      catch
+      {
+        Write-Warning "$($VM.name) doesn't belong to a vApp."
+        continue;
+      }
+    }
+    Elseif (-Not $vApp)
+    {
+      Write-Warning 'vApp was not specified'
+      break;
+    }
+    $vApp.ExtensionData.VAppConfig.EntityConfig |
+      Where-Object {$_.Key -match $VM.ID} |
+      Select-Object @{
+        name='VM'
+        Expression={Get-VIObjectByVIView $_.Key}
+      },
+      @{
+        name='vApp'
+        Expression={$vApp.name}
+      },
+      'StartOrder','StartDelay',
+      'WaitingForGuest','StartAction',
+      'StopDelay','StopAction',
+      @{
+        name='DestroyWithParent'
+        Expression={IF ($_.DestroyWithParent -eq $null){
+            $False
+          }
+          else
+          {
+            $_.DestroyWithParent
+          }
+        }
+      }
+  }
+}
+
+################################################################
+# Listing 9.9: Get the start order settings for vApp01
+################################################################
+[vSphere PowerCLI] C:\> Get-VApp app01 | Get-vAppStartOrder
+
+VM                : vMA4.1
+vApp              : App01
+StartOrder        : 1
+StartDelay        : 120
+WaitingForGuest   : False
+StartAction       : powerOn
+StopDelay         : 120
+StopAction        : powerOff
+DestroyWithParent : False
+
+VM                : SQL01
+vApp              : App01
+StartOrder        : 2
+StartDelay        : 120
+WaitingForGuest   : False
+StartAction       : powerOn
+StopDelay         : 120
+StopAction        : powerOff
+DestroyWithParent : False
+
+VM                : VUM01
+vApp              : App01
+StartOrder        : 3
+StartDelay        : 120
+WaitingForGuest   : False
+StartAction       : powerOn
+StopDelay         : 120
+StopAction        : powerOff
+DestroyWithParent : False
+
+################################################################
+# Figure 9.10: Function Set-vAppStartOrder
+################################################################
+Function Set-vAppStartOrder
+{
+  <#
+  .SYNOPSIS
+    Set the vApp Startup Order for a given VM/vApp
+  .DESCRIPTION
+    Set the vApp Startup Order for a given VM/vApp
+  .PARAMETER VM
+    VM to modify the startup order for.
+  .PARAMETER vApp
+    vApp to modify the startup order for.
+  .PARAMETER StartOrder
+    Specifies the start order for this entity. Entities are
+    started from lower numbers to higher-numbers and 
+    reverse on shutdown. Multiple entities with the same 
+    start-order can be started in parallel and the order is 
+    unspecified. This value must be 0 or higher.
+  .PARAMETER StartDelay
+    Delay in seconds before continuing with the next entity 
+    in the order of entities to be started
+  .PARAMETER WaitingForGuest
+    Determines if the virtual machine should start after 
+    receiving a heartbeat, from the guest. When a virtual 
+    machine is next in the start order, the system either 
+    waits a specified period of time for a virtual machine
+    to power on or it waits until it receives a successful
+    heartbeat from a powered on virtual machine. By 
+    default, this is set to false. This property has no 
+    effect for vApps.
+  .PARAMETER StartAction
+    How to start the entity. Valid settings are none or 
+    powerOn. If set to none, then the entity does not 
+    participate in auto-start.
+  .PARAMETER StopDelay
+    Delay in seconds before continuing with the next entity
+    in the order sequence. This is only used if the stopAction 
+    is guestShutdown.
+  .PARAMETER StopAction
+    Defines the stop action for the entity. Can be set to none, 
+    powerOff, guestShutdown, or suspend. If set to none, then 
+    the entity does not participate in auto-stop.
+  .PARAMETER DestroyWithParent
+    ether the entity should be removed, when this vApp is 
+    removed. This is only set for linked children.
+  .EXAMPLE
+    Get-vApp | Get-vAppStartOrder
+  .EXAMPLE
+    Get-vAppStartOrder -VM (get-vm sql01)
+  #>
+  [CmdletBinding(SupportsShouldProcess=$true,
+    DefaultParameterSetName='ByVM')]
+  Param(
+    [Parameter(Mandatory=$true
+    ,   ValueFromPipelineByPropertyName=$true
+    ,   ValueFromPipeline=$True
+    ,   ParameterSetName='ByVM'
+    )]
+    [VMware.VimAutomation.ViCore.Impl.V1.Inventory.VirtualMachineImpl]
+    $VM
+  ,   
+    [Parameter(ValueFromPipeline=$True
+    ,   ParameterSetName='ByvApp'
+    )]
+    [VMware.VimAutomation.ViCore.Impl.V1.Inventory.VAppImpl]
+    $vApp
+  ,
+    [Parameter(ValueFromPipelineByPropertyName=$true
+    ,   ParameterSetName='ByvApp'
+    )]
+    [Parameter(ValueFromPipelineByPropertyName=$true
+    ,   ParameterSetName='ByVM'
+    )]
+    [int]
+    $StartOrder
+  ,
+    [Parameter(ValueFromPipelineByPropertyName=$true
+    ,   ParameterSetName='ByvApp'
+    )]
+    [Parameter(ValueFromPipelineByPropertyName=$true
+    ,   ParameterSetName='ByVM'
+    )]
+    [int]
+    $StartDelay
+  ,
+    [Parameter(ValueFromPipelineByPropertyName=$true
+    ,   ParameterSetName='ByVM'
+    )]
+    [bool]
+    $WaitingForGuest
+  ,
+    [Parameter(ValueFromPipelineByPropertyName=$true
+    ,   ParameterSetName='ByvApp'
+    )]
+    [Parameter(ValueFromPipelineByPropertyName=$true
+    ,   ParameterSetName='ByVM'
+    )]
+    [ValidateSet("none","powerOn")]
+    [string]
+    $StartAction
+  ,
+    [Parameter(ValueFromPipelineByPropertyName=$true
+    ,   ParameterSetName='ByvApp'
+    )]
+    [Parameter(ValueFromPipelineByPropertyName=$true
+    ,   ParameterSetName='ByVM'
+    )]
+    [int]
+    $StopDelay
+  ,
+    [Parameter(ValueFromPipelineByPropertyName=$true
+    ,   ParameterSetName='ByvApp'
+    )]
+    [Parameter(ValueFromPipelineByPropertyName=$true
+    ,   ParameterSetName='ByVM'
+    )]
+    [ValidateSet('none','powerOff','guestShutdown','suspend')]
+    [string]
+    $StopAction
+  ,
+    [Parameter(ValueFromPipelineByPropertyName=$true
+    ,   ParameterSetName='ByvApp'
+    )]
+    [bool]
+    $DestroyWithParent
+  )
+  process 
+  {
+
+    Try
+    {
+      $vApp = Get-VIObjectByVIView $vm.ExtensionData.ParentVApp
+    }
+    catch
+    {
+      Write-Warning "$($VM.name) doesn't belong to a vApp."
+      continue;
+    }
+    $EntityConfig = $vApp.ExtensionData.VAppConfig.EntityConfig
+    
+    $spec = New-Object VMware.Vim.VAppConfigSpec
+    $spec.entityConfig = `
+      Foreach ($Conf in ($EntityConfig.GetEnumerator()))
+      {
+        If ($Conf.Key.ToString() -eq $VM.ID.tostring())
+        {
+          $msg = "Setting $($VM.Name) start order to:"
+          Switch ($PSCmdlet.MyInvocation.BoundParameters.keys)
+          {
+            'StartOrder'
+            {
+              $msg = "{0} StartOrder:{1}" -f $msg, 
+                $StartOrder
+              $Conf.StartOrder = $StartOrder
+            }
+            'StartDelay'
+            {
+              $msg = "{0} StartDelay:{1}" -f $msg, 
+                $StartDelay
+              $Conf.StartDelay = $StartDelay
+            }
+            'WaitingForGuest'
+            {
+              $msg = "{0} WaitingForGuest:{1}" -f $msg, 
+                $WaitingForGuest
+              $Conf.WaitingForGuest = $WaitingForGuest
+            }
+            'StartAction'
+            {
+              $msg = "{0} StartAction:{1}" -f $msg, 
+                $StartAction
+              $Conf.StartAction = $StartAction
+            }
+            'StopDelay'
+            {
+              $msg = "{0} StopDelay:{1}" -f $msg, 
+                $StopDelay
+              $Conf.StopDelay = $StopDelay
+            }
+            'StopAction'
+            {
+              $msg = "{0} StopAction:{1}" -f $msg, 
+                $StopAction
+              $Conf.StopAction = $StopAction
+            }
+            'DestroyWithParent'
+            {
+              $msg = "{0} DestroyWithParent:{1}" -f $msg, 
+                $DestroyWithParent
+              $Conf.DestroyWithParent = $DestroyWithParent
+            }
+          }
+        }
+        $conf
+      }
+    If ($pscmdlet.shouldprocess($vApp.Name, $msg))
+    {
+      $vApp.ExtensionData.UpdateVAppConfig($spec)
+    }
+  }
+}
+################################################################
+# Listing 9.11: Set the start order for the VMs in App01
+################################################################
+Get-Vm 'vMA4.1' | Set-vAppStartOrder -StartOrder 1 `
+    -StartAction 'powerOn' `
+    -StartDelay 0 `
+    -StopAction 'guestShutdown'
+
+Get-Vm 'SQL01' | Set-vAppStartOrder -StartOrder 1 `
+    -StartAction 'powerOn' `
+    -StartDelay 120 `
+    -WaitingForGuest $true `
+    -StopAction 'guestShutdown' `
+    -StopDelay 120
+    
+Get-Vm 'VUM01' | Set-vAppStartOrder -StartOrder 2 `
+    -StartDelay 0 `
+    -StartAction 'powerOn' `
+    -StopAction 'guestShutdown'
+
+################################################################
+# Listing 9.12: Function Get-IPPool
+################################################################
+Function Get-IPPool
+{
+    <#
+    .SYNOPSIS
+        Get existing IP Pools from vCenter
+    .DESCRIPTION
+        Get existing IP Pools from vCenter
+    .PARAMETER Datacenter
+        Datacenter to query for IP Pools.
+    .EXAMPLE
+        Get-Datacenter | Get-IPPool
+    #>
+    [cmdletbinding()]
+    Param(
+        [Parameter(ValueFromPipeline=$True
+        ,   ValueFromPipelineByPropertyName=$True)]
+        [VMware.VimAutomation.ViCore.Impl.V1.Inventory.DatacenterImpl[]]
+        $Datacenter = (Get-Datacenter)
+    ,
+        [Parameter(ValueFromPipeline=$True
+        ,   ValueFromPipelineByPropertyName=$True)]
+        [String]
+        $Name = "*"
+    )
+    Process
+    {
+        Foreach ($dc in $Datacenter)
+        {
+            $IPPoolManager = Get-View `
+				-Id 'IpPoolManager-IpPoolManager'
+            $IPPoolManager.QueryIpPools($dc.ID) | 
+                Where-Object {$_.Name -like $name}| %{
+                New-Object PSOBject -Property @{
+                    'Name' = $_.Name
+                    'DnsDomain' = $_.DNSDomain
+                    'DNSSearchPath' = $_.DNSSearchPath
+                    'HostPrefix' = $_.HostPrefix
+                    'HttpProxy' = $_.HttpProxy
+                    'NetworkAssociation' = $_.NetworkAssociation
+                    'IPv4SubnetAddress' = `
+						$_.ipv4Config.SubnetAddress
+                    'IPv4Netmask'=$_.ipv4Config.netmask
+                    'IPv4Gateway'=$_.ipv4Config.Gateway
+                    'IPv4Range'=$_.ipv4Config.Range
+                    'IPv4DNS'=$_.ipv4Config.DNS
+                    'IPv4DHCP'=$_.ipv4Config.DhcpServerAvailable
+                    'IPv4IpPoolEnabled' = `
+						$_.ipv4Config.IpPoolEnabled
+                    'IPv6SubnetAddress' = `
+						$_.ipv6Config.SubnetAddress
+                    'IPv6Netmask'=$_.ipv6Config.netmask
+                    'IPv6Gateway'=$_.ipv6Config.Gateway
+                    'IPv6Range'=$_.ipv6Config.Range
+                    'IPv6DNS'=$_.ipv6Config.DNS
+                    'IPv6DHCP'=$_.ipv6Config.DhcpServerAvailable
+                    'IPv6IpPoolEnabled' = `
+						$_.ipv6Config.IpPoolEnabled
+                    'Datacenter'=$dc
+                }
+            }
+        }
+    }
+}
+################################################################
+#  Listing 9.13: Function New-IpPool
+################################################################
+Function New-IpPool
+{
+    <#
+    .SYNOPSIS
+        Create a new IP Pool within vCenter
+    .DESCRIPTION
+        Create a new IP Pool within vCenter
+    .PARAMETER Datacenter
+        Datacenter to create the new IP Pool in.
+    .PARAMETER Name
+        Pool name. Must be unique. 
+    .PARAMETER DnsDomain
+        DNS Domain. For example, vmware.com. This can be an 
+        empty string if no domain is configured. 
+    .PARAMETER DNSSearchPath
+        DNS Search Path. For example, eng.vmware.com;vmware.com
+    .PARAMETER HostPrefix
+        Prefix for hostnames.
+    .PARAMETER HttpProxy
+        The HTTP proxy to use on this network
+    .PARAMETER NetworkAssociation
+        The networks that are associated with this IP pool.
+        
+        Use the Get-Network function to get the objects this 
+        parameter requires.
+    .PARAMETER IPv4SubnetAddress
+        Address of the subnet.
+    .PARAMETER IPv4Netmask
+        Netmask
+    .PARAMETER IPv4Gateway
+        Gateway. This can be an empty string
+    .PARAMETER IPv4Range
+        IP range. This is specified as a set of ranges 
+        separated with commas. One range is given by a start 
+        address, a hash (#), and the length of the range.
+        For example:
+        192.0.2.235#20 = IPv4 range 192.0.2.235-192.0.2.254
+        192.0.2.0#24 = IPv4 range 192.0.2.1-192.0.2.254
+    .PARAMETER IPv4DNS
+        DNS servers 
+    .PARAMETER IPv4DHCP
+        Whether a DHCP server is available on this network.
+    .PARAMETER IPv4IpPoolEnabled
+        IP addresses can only be allocated from the range if 
+        the IP pool is enabled. 
+    .PARAMETER IPv6SubnetAddress
+        Address of the subnet.
+    .PARAMETER IPv6Netmask
+        Netmask
+    .PARAMETER IPv6Gateway
+        Gateway. This can be an empty string
+    .PARAMETER IPv6Range
+        IP range. This is specified as a set of ranges 
+        separated with commas. One range is given by a start
+        address, a hash (#), and the length of the range.
+        For example:
+        2001::7334 # 20 = IPv6 range 2001::7334 - 2001::7347
+    .PARAMETER IPv6DNS
+        DNS servers 
+    .PARAMETER IPv6DHCP
+        Whether a DHCP server is available on this network.
+    .PARAMETER IPv6IpPoolEnabled
+        IP addresses can only be allocated from the range if 
+        the IP pool is enabled.     
+    .EXAMPLE
+        
+    #>
+    [cmdletbinding()]
+    Param(
+        [Parameter(Mandatory=$True
+        ,   ValueFromPipeline=$True
+        ,   ValueFromPipelineByPropertyName=$True)]
+        [VMware.VimAutomation.ViCore.Impl.V1.Inventory.DatacenterImpl]
+        $Datacenter
+    ,   [Parameter(Mandatory=$true
+        ,   ValueFromPipelineByPropertyName=$True)]
+        [String]
+        $Name
+    ,   [Parameter(ValueFromPipelineByPropertyName=$True)]
+        [String]
+        $DnsDomain = ""
+    ,   [Parameter(ValueFromPipelineByPropertyName=$True)]
+        [String[]]
+        $DNSSearchPath = ""
+    ,   [Parameter(ValueFromPipelineByPropertyName=$True)]
+        [String]
+        $HostPrefix = ""
+    ,   [Parameter(ValueFromPipelineByPropertyName=$True)]
+        [String]
+        $HttpProxy = ""
+    ,   [Parameter(ValueFromPipeline=$True
+        ,    ValueFromPipelineByPropertyName=$True)]
+        [VMware.Vim.IpPoolAssociation[]]
+        $NetworkAssociation
+    ,   [Parameter(ValueFromPipelineByPropertyName=$True)]
+        [String]
+        $IPv4SubnetAddress = ''
+    ,   [Parameter(ValueFromPipelineByPropertyName=$True)]
+        [String]
+        $IPv4Netmask = '255.255.255.0'
+    ,   [Parameter(ValueFromPipelineByPropertyName=$True)]
+        [String]
+        $IPv4Gateway = ''
+    ,   [Parameter(ValueFromPipelineByPropertyName=$True)]
+        [String]
+        $IPv4Range
+    ,   [Parameter(ValueFromPipelineByPropertyName=$True)]
+        [String[]]
+        $IPv4DNS = @("")
+    ,   [Parameter(ValueFromPipelineByPropertyName=$True)]
+        [bool]
+        $IPv4DHCP = $false
+    ,   [Parameter(ValueFromPipelineByPropertyName=$True)]
+        [bool]
+        $IPv4IpPoolEnabled = $false
+    ,   [Parameter(ValueFromPipelineByPropertyName=$True)]
+        [String]
+        $IPv6SubnetAddress = ''
+    ,   [Parameter(ValueFromPipelineByPropertyName=$True)]
+        [String]
+        $IPv6Netmask = "ffff:ffff:ffff:ffff:ffff:ffff::"
+    ,   [Parameter(ValueFromPipelineByPropertyName=$True)]
+        [String]
+        $IPv6Gateway = ""
+    ,   [Parameter(ValueFromPipelineByPropertyName=$True)]
+        [String]
+        $IPv6Range
+    ,   [Parameter(ValueFromPipelineByPropertyName=$True)]
+        [String[]]
+        $IPv6DNS = @()
+    ,   [Parameter(ValueFromPipelineByPropertyName=$True)]
+        [bool]
+        $IPv6DHCP = $false
+    ,   [Parameter(ValueFromPipelineByPropertyName=$True)]
+        [bool]
+        $IPv6IpPoolEnabled = $false
+    )
+    Process
+    {
+        $pool = New-Object VMware.Vim.IpPool
+        $pool.name = $Name
+        $pool.ipv4Config = `
+            New-Object VMware.Vim.IpPoolIpPoolConfigInfo
+        $pool.ipv4Config.subnetAddress = $IPv4SubnetAddress
+        $pool.ipv4Config.netmask = $IPv4Netmask
+        $pool.ipv4Config.gateway = $IPv4Gateway
+        $pool.ipv4Config.dns = $IPv4DNS
+        $pool.ipv4Config.dhcpServerAvailable = $IPv4DHCP
+        $pool.ipv4Config.ipPoolEnabled = $IPv4IpPoolEnabled
+        $pool.ipv6Config = `
+            New-Object VMware.Vim.IpPoolIpPoolConfigInfo
+        IF ($IPv4Range)
+        {
+            $pool.ipv4Config.range = $IPv4Range
+        }
+        $pool.ipv6Config.subnetAddress = $IPv6SubnetAddress
+        $pool.ipv6Config.netmask = $IPv6Netmask
+        $pool.ipv6Config.gateway = $IPv6Gateway
+        $pool.ipv6Config.dns = $IPv6DNS
+        $pool.ipv6Config.dhcpServerAvailable = $IPv6DHCP
+        $pool.ipv6Config.ipPoolEnabled = $IPv6IpPoolEnabled
+        IF ($IPv6Range)
+        {
+            $pool.ipv6Config.range = $IPv6Range
+        }
+        $pool.dnsDomain = $DnsDomain
+        $pool.dnsSearchPath = $DNSSearchPath
+        $pool.hostPrefix = $HostPrefix
+        $pool.httpProxy = $HttpProxy
+        if ($NetworkAssociation)
+        {
+            $pool.NetworkAssociation = $NetworkAssociation
+        }
+        $IpPoolManager = Get-View 'IpPoolManager-IpPoolManager'
+        $IpPoolManager.CreateIpPool($DataCenter.id, $pool) |
+            Out-Null
+        if ($?)
+        {
+            Get-IPPool -Datacenter $DataCenter -Name $Name
+        }
+    }
+}
+
+################################################################
+#  Listing 9.14: Create a New IP Pool
+################################################################
+Get-Datacenter 'ATL-PROD'|
+    New-IPPool -Name '10.10.10.0' `
+    -IPv4SubnetAddress '10.10.10.0' `
+    -IPv4Gateway '10.10.10.1' `
+    -IPv4Netmask '255.255.255.0' `
+    -IPv4Range '10.10.10.11#244' `
+    -IPv4DNS '10.10.10.5','10.10.10.6' `
+    -DnsDomain 'getadmin.local' `
+    -DNSSearchPath 'lab.getadmin.local','getadmin.local' `
+    -IPv4IpPoolEnabled $true
+
+################################################################
+#  Listing 9.15: Get-Network Function
+################################################################
+Function Get-Network
+{
+    <#
+    .SYNOPSIS
+        Get networks registered in vcenter
+    .DESCRIPTION
+        Get networks registered in vcenter
+    .PARAMETER name
+        Only return networks that match name
+    .EXAMPLE
+        Get-Network -Name 10.10.10.0
+    #>
+    [cmdletbinding(DefaultParameterSetName='name')]
+    Param(
+        [Parameter(ParameterSetName='name'
+        ,   ValueFromPipeline=$True
+        ,   ValueFromPipelineByPropertyName=$True)]
+        [String]
+        $Name = "*"
+    ,   [Parameter(ParameterSetName='MoRef'
+        ,   ValueFromPipeline=$True
+        ,   ValueFromPipelineByPropertyName=$True)]
+        [VMware.Vim.ManagedObjectReference]
+        $Network
+    )
+    Process
+    {
+        IF ($pscmdlet.parametersetname -eq 'name')
+        {
+            $net = Get-View -ViewType network |
+                Where-Object {$_.name -like $Name}
+        }
+        Else
+        {
+            $net = Get-View -Id $Network
+        }
+        If ($net)
+        {
+            Foreach ($N in $net)
+            {
+                New-Object VMware.Vim.IpPoolAssociation `
+                    -Property @{
+                        Network=$N.MoRef
+                        NetworkName=$N.Name
+                    }
+            }
+        }
+    }
+}
+
+
+################################################################
+#  Listing 9.16: Get networks that need to be configured.
+################################################################
+[vSphere PowerCLI] C:\> Get-VApp app01|
+    Get-VM|
+    Get-NetworkAdapter|
+    Select-Object -ExpandProperty NetworkName -Unique |
+    Get-Network
+
+Network                                         NetworkName 
+-------                                         ----------- 
+DistributedVirtualPortgroup-dvportgroup-109     vDS01-10.10.10.0
+
+################################################################
+#  Listing 9.17: Set-IpPool Function
+################################################################
+Function Set-IPPool
+{
+    <#
+    .SYNOPSIS
+        Modify an existing IP Pool within vCenter
+    .DESCRIPTION
+        Modify an existing IP Pool within vCenter
+    .PARAMETER Datacenter
+        Datacenter to create the new IP Pool in.
+    .PARAMETER Name
+        Pool name.
+    .PARAMETER Name
+        New pool name. Must be unique. 
+    .PARAMETER DnsDomain
+        DNS Domain. For example, vmware.com. This can be an 
+        empty string if no domain is configured. 
+    .PARAMETER DNSSearchPath
+        DNS Search Path. For example, eng.vmware.com;vmware.com
+    .PARAMETER HostPrefix
+        Prefix for hostnames.
+    .PARAMETER HttpProxy
+        The HTTP proxy to use on this network
+    .PARAMETER NetworkAssociation
+        The networks that are associated with this IP pool.
+        
+        Use the Get-Network function to get the objects this 
+        parameter requires.
+    .PARAMETER IPv4SubnetAddress
+        Address of the subnet.
+    .PARAMETER IPv4Netmask
+        Netmask
+    .PARAMETER IPv4Gateway
+        Gateway. This can be an empty string
+    .PARAMETER IPv4Range
+        IP range. This is specified as a set of ranges 
+        separated with commas. One range is given by a start 
+        address, a hash (#), and the length of the range.
+        For example:
+        192.0.2.235#20 = IPv4 range 192.0.2.235-192.0.2.254
+        192.0.2.0#24 = IPv4 range 192.0.2.1-192.0.2.254
+    .PARAMETER IPv4DNS
+        DNS servers 
+    .PARAMETER IPv4DHCP
+        Whether a DHCP server is available on this network.
+    .PARAMETER IPv4IpPoolEnabled
+        IP addresses can only be allocated from the range if 
+        the IP pool is enabled. 
+    .PARAMETER IPv6SubnetAddress
+        Address of the subnet.
+    .PARAMETER IPv6Netmask
+        Netmask
+    .PARAMETER IPv6Gateway
+        Gateway. This can be an empty string
+    .PARAMETER IPv6Range
+        IP range. This is specified as a set of ranges 
+        separated with commas. One range is given by a start
+        address, a hash (#), and the length of the range.
+        For example:
+        2001::7334 # 20 = IPv6 range 2001::7334 - 2001::7347
+    .PARAMETER IPv6DNS
+        DNS servers 
+    .PARAMETER IPv6DHCP
+        Whether a DHCP server is available on this network.
+    .PARAMETER IPv6IpPoolEnabled
+        IP addresses can only be allocated from the range if 
+        the IP pool is enabled.     
+    .EXAMPLE
+        
+    #>
+    [cmdletbinding()]
+    Param(
+        [Parameter(Mandatory=$True
+        ,   ValueFromPipeline=$True
+        ,   ValueFromPipelineByPropertyName=$True)]
+        [VMware.VimAutomation.ViCore.Impl.V1.Inventory.DatacenterImpl]
+        $Datacenter
+    ,   [Parameter(Mandatory=$true
+        ,   ValueFromPipelineByPropertyName=$True)]
+        [String]
+        $Name
+    ,   [Parameter(ValueFromPipelineByPropertyName=$True)]
+        [String]
+        $NewName
+    ,   [Parameter(ValueFromPipelineByPropertyName=$True)]
+        [String]
+        $DnsDomain
+    ,   [Parameter(ValueFromPipelineByPropertyName=$True)]
+        [String[]]
+        $DNSSearchPath
+    ,   [Parameter(ValueFromPipelineByPropertyName=$True)]
+        [String]
+        $HostPrefix
+    ,   [Parameter(ValueFromPipelineByPropertyName=$True)]
+        [String]
+        $HttpProxy 
+    ,   [Parameter(ValueFromPipeline=$True
+        ,    ValueFromPipelineByPropertyName=$True)]
+        [VMware.Vim.IpPoolAssociation[]]
+        $NetworkAssociation
+    ,   [Parameter(ValueFromPipelineByPropertyName=$True)]
+        [String]
+        $IPv4SubnetAddress
+    ,   [Parameter(ValueFromPipelineByPropertyName=$True)]
+        [String]
+        $IPv4Netmask
+    ,   [Parameter(ValueFromPipelineByPropertyName=$True)]
+        [String]
+        $IPv4Gateway
+    ,   [Parameter(ValueFromPipelineByPropertyName=$True)]
+        [String]
+        $IPv4Range
+    ,   [Parameter(ValueFromPipelineByPropertyName=$True)]
+        [String[]]
+        $IPv4DNS
+    ,   [Parameter(ValueFromPipelineByPropertyName=$True)]
+        [bool]
+        $IPv4DHCP
+    ,   [Parameter(ValueFromPipelineByPropertyName=$True)]
+        [bool]
+        $IPv4IpPoolEnabled
+    ,   [Parameter(ValueFromPipelineByPropertyName=$True)]
+        [String]
+        $IPv6SubnetAddress
+    ,   [Parameter(ValueFromPipelineByPropertyName=$True)]
+        [String]
+        $IPv6Netmask
+    ,   [Parameter(ValueFromPipelineByPropertyName=$True)]
+        [String]
+        $IPv6Gateway
+    ,   [Parameter(ValueFromPipelineByPropertyName=$True)]
+        [String]
+        $IPv6Range
+    ,   [Parameter(ValueFromPipelineByPropertyName=$True)]
+        [String[]]
+        $IPv6DNS
+    ,   [Parameter(ValueFromPipelineByPropertyName=$True)]
+        [bool]
+        $IPv6DHCP
+    ,   [Parameter(ValueFromPipelineByPropertyName=$True)]
+        [bool]
+        $IPv6IpPoolEnabled
+    )
+    Process
+    {
+        $IPPoolManager = Get-View 'IpPoolManager-IpPoolManager'
+        $pool = $IPPoolManager.QueryIpPools($Datacenter.ID)|
+            Where-Object {$_.Name -eq $Name}
+        Switch ($PSCmdlet.MyInvocation.BoundParameters.keys)
+        {
+            'NewName' {
+                $pool.name = $Name
+            }
+            'IPv4SubnetAddress' {
+               $pool.ipv4Config.subnetAddress=$IPv4SubnetAddress
+            }
+            'IPv4Netmask' {
+                $pool.ipv4Config.netmask = $IPv4Netmask
+            }
+            'IPv4Gateway' {
+                $pool.ipv4Config.gateway = $IPv4Gateway
+            }
+            'IPv4DNS' {
+                $pool.ipv4Config.dns = $IPv4DNS
+            }
+            'IPv4DHCP' {
+                $pool.ipv4Config.dhcpServerAvailable = $IPv4DHCP
+            }
+            'IPv4IpPoolEnabled' {
+               $pool.ipv4Config.ipPoolEnabled=$IPv4IpPoolEnabled
+            }
+            'IPv4Range' {
+                $pool.ipv4Config.range = $IPv4Range
+            }
+            'IPv6SubnetAddress' {
+               $pool.ipv6Config.subnetAddress=$IPv6SubnetAddress
+            }
+            'IPv6Netmask' {
+                $pool.ipv6Config.netmask = $IPv6Netmask
+            }
+            'IPv6Gateway' {
+                $pool.ipv6Config.gateway = $IPv6Gateway
+            }
+            'IPv6DNS' {
+                $pool.ipv6Config.dns = $IPv6DNS
+            }
+            'IPv6DHCP' {
+                $pool.ipv6Config.dhcpServerAvailable = $IPv6DHCP
+            }
+            'IPv6IpPoolEnabled' {
+               $pool.ipv6Config.ipPoolEnabled=$IPv6IpPoolEnabled
+            }
+            'IPv6Range' {
+                $pool.ipv6Config.range = $IPv6Range
+            }
+            'DnsDomain' {
+                $pool.dnsDomain = $DnsDomain
+            }
+            'DNSSearchPath' {
+                $pool.dnsSearchPath = $DNSSearchPath
+            }
+            'HostPrefix' {
+                $pool.hostPrefix = $HostPrefix
+            }
+            'HttpProxy' {
+                $pool.httpProxy = $HttpProxy
+            }
+            'NetworkAssociation' {
+                $pool.NetworkAssociation = $NetworkAssociation
+            }
+        }
+        $IpPoolManager = Get-View 'IpPoolManager-IpPoolManager'
+        $IpPoolManager.UpdateIpPool($DataCenter.id, $pool) |
+            Out-Null
+        if ($?)
+        {
+            Get-IPPool -Datacenter $DataCenter -Name $Name
+        }
+        
+    }
+}
+
+################################################################
+#  Listing 9.18: Associate IP Pool to virtual Network.
+################################################################
+Get-VApp app01|
+    Get-VM|
+    Get-NetworkAdapter|
+    Select-Object -ExpandProperty NetworkName -Unique |
+    Get-Network |
+        Set-IPPool -Name '10.10.10.0' `
+            -Datacenter (Get-Datacenter 'ATL-PROD')
+################################################################
+#  Listing 9.19: Get-vAppIPAssignment function
+################################################################
+Function Get-vAppIPAssignment
+{
+    <#
+    .SYNOPSIS
+        Get the IP assignment for the specified vApp.
+    .DESCRIPTION
+        Get the IP assignment for the specified vApp.
+    .PARAMETER vApp
+        vApp to rerieve the IP Assignment settings.
+    .EXAMPLE
+        Get-vApp | Get-vAppIPAssignment
+    #>
+    [cmdletbinding()]
+    Param(
+        [Parameter(ValueFromPipeline=$True)]
+        [VMware.VimAutomation.ViCore.Impl.V1.Inventory.VAppImpl]
+        $vApp
+    )
+    Process
+    {
+        $vapp.ExtensionData.VAppConfig.IpAssignment | %{
+            New-Object PSObject -Property @{
+                'vApp'=$vApp
+                'IpProtocol'=$_.IpProtocol
+                'IpAllocationPolicy'=$_.IpAllocationPolicy
+                'SupportedIpAllocation'= `
+                    $_.SupportedAllocationScheme
+                'SupportedIpProtocol'=$_.SupportedIpProtocol
+            }
+        }
+    }
+}
+################################################################
+#  Listing 9.20: Set-vAppIPAssignment function
+################################################################
+Function Set-vAppIPAssignment
+{
+    <#
+    .SYNOPSIS
+        Set the IP assignment for the specified vApp.
+    .DESCRIPTION
+        Set the IP assignment for the specified vApp.  These 
+        settings controle how the guest software gets 
+        configured with IP addresses, including protocol type
+        (IPv4 or IPv6) and the life-time of those IP addresses.
+    .PARAMETER vApp
+        vApp to modify the IP Assignment settings.
+    .PARAMETER IpProtocol
+        Specifies the chosen IP protocol for this deployment. 
+        This must be one of the values in the 
+        SupportedIpAllocation
+    .PARAMETER IpAllocationPolicy
+        Specifies how IP allocation should be managed by the VI
+        platform. This is typically specified by the deployer. 
+        Valid options are 'dhcpPolicy','transientPolicy', and
+        'fixedPolicy'
+    .PARAMETER SupportedIpAllocation
+        Specifies the IP allocation schemes supported by the 
+        guest software. When updating this field, an array of 
+        the form "" will clear all settings. 
+        
+        Otherwise, the supplied value will overwrite the 
+        current setting.
+    .PARAMETER SupportedIpProtocol
+        Specifies the IP protocols supported by the guest 
+        software. When updating this field, an array in the 
+        form "" will clear all settings. 
+        
+        Otherwise, the supplied value will overwrite the 
+        current setting.
+    .EXAMPLE
+        
+    #>
+    [cmdletbinding(SupportsShouldProcess=$True)]
+    Param(
+        [Parameter(ValueFromPipeline=$True)]
+        [VMware.VimAutomation.ViCore.Impl.V1.Inventory.VAppImpl]
+        $vApp
+    ,   [Parameter(ValueFromPipelineByPropertyName=$True)]
+        [ValidateSet('IPv4','IPv6')]
+        [string]
+        $IpProtocol
+    ,   [Parameter(ValueFromPipelineByPropertyName=$True)]
+        [ValidateSet('dhcpPolicy','transientPolicy','fixedPolicy')]
+        [string]
+        $IpAllocationPolicy
+    ,   [Parameter(ValueFromPipelineByPropertyName=$True)]
+        [ValidateSet('ovfenv','dhcp')]
+        [string[]]
+        $SupportedIpAllocation
+    ,   [Parameter(ValueFromPipelineByPropertyName=$True)]
+        [ValidateSet('IPv4','IPv6')]
+        [string[]]
+        $SupportedIpProtocol
+    )
+    Process
+    {
+        $spec = New-Object VMware.Vim.VAppConfigSpec
+        $spec.ipAssignment = `
+            $vApp.ExtensionData.VAppConfig.IpAssignment
+        $msg = "Modifing $($vApp.Name)"
+        Switch ($PSCmdlet.MyInvocation.BoundParameters.keys)
+        {
+            'IpProtocol'
+            {
+                $msg = "{0} IP protocol:{1}" -f $msg,
+                    $IpProtocol
+                $spec.ipAssignment.ipProtocol = `
+                    switch ($IpProtocol)
+                    {
+                        'ipv4' {'IPv4'}
+                        'ipv6' {'IPv6'}
+                    }
+            }
+            'IpAllocationPolicy'
+            {
+                $msg = "{0} IP allocation policy:{1}" -f $msg,
+                    $IpAllocationPolicy
+                $spec.ipAssignment.IpAllocationPolicy = `
+			switch ($IpAllocationPolicy)
+                        {
+                            'dhcpPolicy' {'dhcpPolicy'}
+                            'transientPolicy' {'transientPolicy'}
+                            'fixedPolicy' {'fixedPolicy'}
+                        }                    
+            }
+            'SupportedIpAllocation'
+            {
+                $msg="{0} supported allocation policy:{1}" -f `
+                    $msg,$($SupportedIpAllocation -join ',')
+                $spec.ipAssignment.SupportedAllocationScheme = `
+                        $SupportedIpAllocation | %{$_.TOLOWER()}
+            }
+            'SupportedIpProtocol'
+            {
+                $msg = "{0} supported IP protocol:{1}" -f $msg,
+                    $($SupportedIpProtocol -join ',')
+                $spec.ipAssignment.supportedIpProtocol = `
+                    switch ($SupportedIpProtocol)
+                    {
+                        'ipv4' {'IPv4'}
+                        'ipv6' {'IPv6'}
+                    }
+            }
+        }
+        if ($PSCmdlet.ShouldProcess($vApp.Name,$msg))
+        {
+            $vApp.ExtensionData.UpdateVAppConfig($spec)
+            if ($?)
+            {
+                Get-vAppIPAssignment -vApp $vApp
+            }
+        }
+    }
+}
+
+# Listing 9.21: Get-vAppAdvancedProperties Function
+Function Get-vAppProductInfo
+{
+    <#
+    .SYNOPSIS
+        Get the vApp Product Information
+    .DESCRIPTION
+        Get the vApp Product Information
+    .PARAMETER vApp
+        vApp to retrieve the Product Information for.
+    .EXAMPLE
+        Get-VApp | Get-vAppProductInfo
+    #>
+    [cmdletbinding()]
+    Param(
+        [Parameter(ValueFromPipeline=$True
+        ,   ValueFromPipelineByPropertyName=$True)]
+        [VMware.VimAutomation.ViCore.Impl.V1.Inventory.VAppImpl]
+        $vApp
+    )
+    Process
+    {
+        $vApp.ExtensionData.VAppConfig.Product | 
+            Select-Object -Property @{
+                    Name='vApp'
+                    Expression={$vApp}
+                },'Name','Vendor','Version','FullVersion',
+                'VendorUrl','ProductUrl','AppUrl'
+    }
+}
+
+# Listing 9.22: Set-vAppProductInfo Function
+Function Set-vAppProductInfo
+{
+    <#
+    .SYNOPSIS
+        Set the vApp Product Information
+    .DESCRIPTION
+        Set the vApp Product Information
+        
+        Information that describes what product a vApp 
+        contains, e.g., what software that is installed in 
+        the contained virtual machines.
+    .PARAMETER vApp
+        vApp to set the product information for.
+    .PARAMETER Name
+        Name of the Product
+    .PARAMETER Vendor
+        Vendor of the product. 
+    .PARAMETER Version
+        Short version of the product , e.g., 1.0. 
+    .PARAMETER FullVersion
+        Full-version of the product, e.g., 1.0-build 12323. 
+    .PARAMETER VendorUrl
+        URL to vendor homepage. 
+    .PARAMETER ProductUrl
+        URL to product homepage. 
+    .PARAMETER AppUrl
+        URL to entry-point for application. This is often 
+        specified using a macro, e.g., http://${app.ip}/, 
+        where app.ip is a defined property on the virtual 
+        machine or vApp container. 
+    .EXAMPLE
+        Get-VApp App01| Set-vAppProductInfo `
+            -Vendor 'VMware' -Version '4' -FullVersion '4.1'
+    #>
+    [cmdletbinding()]
+    Param(
+        [Parameter(ValueFromPipeline=$True
+        ,   ValueFromPipelineByPropertyName=$True)]
+        [VMware.VimAutomation.ViCore.Impl.V1.Inventory.VAppImpl]
+        $vApp
+    ,   [Parameter(ValueFromPipelineByPropertyName=$True)]
+        [string]
+        $Name
+    ,   [Parameter(ValueFromPipelineByPropertyName=$True)]
+        [string]
+        $Vendor
+    ,   [Parameter(ValueFromPipelineByPropertyName=$True)]
+        [string]
+        $Version
+    ,   [Parameter(ValueFromPipelineByPropertyName=$True)]
+        [string]
+        $FullVersion
+    ,   [Parameter(ValueFromPipelineByPropertyName=$True)]
+        [string]
+        $VendorUrl
+    ,   [Parameter(ValueFromPipelineByPropertyName=$True)]
+        [string]
+        $ProductUrl
+    ,   [Parameter(ValueFromPipelineByPropertyName=$True)]
+        [string]
+        $AppUrl
+    )
+    Process
+    {
+        $spec = New-Object VMware.Vim.VAppConfigSpec
+        $spec.product = `
+            New-Object VMware.Vim.VAppProductSpec[] (1)
+        $spec.product[0]= New-Object VMware.Vim.VAppProductSpec
+        $spec.product[0].operation = "edit"
+        $spec.product[0].info = `
+            New-Object VMware.Vim.VAppProductInfo
+        $spec.product[0].info.key = `
+            $vApp.ExtensionData.VAppConfig.Property| 
+            Select -ExpandProperty Key -First 1
+        $msg = "Modifing Advanced Properties "
+        Switch ($PSCmdlet.MyInvocation.BoundParameters.keys)
+        {
+            'Name'
+            {
+                $spec.product[0].info.Name = $name
+                $msg = "{0} Name:{1}" -f $msg,$Name
+            }
+            'Vendor'
+            {
+                
+                $spec.product[0].info.Vendor = $Vendor
+                $msg = "{0} Vendor:{1}" -f $msg,$Vendor
+            }
+            'Version'
+            {
+                $spec.product[0].info.Version = $Version
+                $msg = "{0} Version:{1}" -f $msg,$Version
+            }
+            'FullVersion'
+            {
+                $spec.product[0].info.FullVersion = $Fullversion
+                $msg = "{0} Full version:{1}" -f $msg,
+                    $Fullversion
+            }
+            'VendorUrl'
+            {
+                $spec.product[0].info.VendorUrl = $vendorURL
+                $msg = "{0} vendor URL:{1}" -f $msg,$vendorURL
+            }
+            'ProductUrl'
+            {
+                $spec.product[0].info.ProductUrl = $productUrl
+                $msg = "{0} product Url:{1}" -f $msg,
+                    $productUrl
+            }
+            'AppUrl'
+            {
+                $spec.product[0].info.AppUrl = $AppUrl
+                $msg = "{0} App Url:{1}" -f $msg,$AppUrl
+            }
+        }
+        
+        if ($PSCmdlet.ShouldProcess($vApp.Name,$msg))
+        {
+            $vApp.ExtensionData.UpdateVAppConfig($spec)
+            if ($?)
+            {
+                Get-vAppProductInfo -vApp $vApp
+            }
+        }
+    }
+}

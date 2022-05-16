@@ -1,0 +1,101 @@
+Example 1:
+
+configuration CreatePullServer
+{
+    param
+    (
+        [string[]]$ComputerName = 'localhost'
+    )
+
+    Import-DSCResource -ModuleName xPSDesiredStateConfiguration
+
+    Node $ComputerName
+    {
+        WindowsFeature DSCServiceFeature
+        {
+            Ensure = "Present"
+            Name   = "DSC-Service"
+        }
+
+        xDscWebService PSDSCPullServer
+        {
+            Ensure                  = "Present"
+            EndpointName            = "PSDSCPullServer"
+            Port                    = 8080
+            PhysicalPath            = "$env:SystemDrive\inetpub\wwwroot\PSDSCPullServer"
+            CertificateThumbPrint   = "AllowUnencryptedTraffic"
+            ModulePath              = "$env:PROGRAMFILES\WindowsPowerShell\DscService\Modules"
+            ConfigurationPath       = "$env:PROGRAMFILES\WindowsPowerShell\DscService\Configuration"
+            State                   = "Started"
+            DependsOn               = "[WindowsFeature]DSCServiceFeature"
+        }
+
+        xDscWebService PSDSCComplianceServer
+        {
+            Ensure                  = "Present"
+            EndpointName            = "PSDSCComplianceServer"
+            Port                    = 9080
+            PhysicalPath            = "$env:SystemDrive\inetpub\wwwroot\PSDSCComplianceServer"
+            CertificateThumbPrint   = "AllowUnencryptedTraffic"
+            State                   = "Started"
+            IsComplianceServer      = $true
+            DependsOn               = ("[WindowsFeature]DSCServiceFeature","[xDSCWebService]PSDSCPullServer")
+        }
+    }
+}
+CreatePullServer -ComputerName dscsrv.testlabs.se
+
+Example 2:
+
+Configuration CompliantExchange
+{
+	param ($MachineName)
+	Import-DSCResource -ModuleName PSDesiredStateConfiguration,xPowerShellExecutionPolicy
+
+	Node $MachineName
+	{
+		xPowerShellExecutionPolicy SetPSExecutionPolicyToRemoteSigned
+        {
+            ExecutionPolicy = "RemoteSigned"
+        }
+		
+		Service MSExchangeFrontEndTransport
+		{
+			Name = "MSExchangeFrontEndTransport"
+			StartupType = "Automatic"
+			State = "Running"
+		}
+	}
+}
+CompliantExchange –MachineName tlex01.testlabs.se
+
+Example 3:
+
+$guid = [guid]::NewGuid()
+$source = "CompliantExchange\tlex01.testlabs.se.mof"
+$dest = "\\dscsrv.testlabs.se\c`$\program files\windowspowershell\dscservice\configuration\$guid.mof"
+copy $source $dest
+New-DSCChecksum $dest
+
+Example 4:
+
+Configuration SetPullMode
+{
+	param([string]$guid)
+	Node tlex01.testlabs.se
+	{
+		LocalConfigurationManager
+		{
+			ConfigurationMode = 'ApplyAndAutoCorrect'
+			ConfigurationID = $guid
+			RefreshMode = 'Pull'
+			DownloadManagerName = 'WebDownloadManager'
+			DownloadManagerCustomData = @{
+				ServerUrl = 'http://dscsrv.testlabs.se:8080/PSDSCPullServer.svc';
+				AllowUnsecureConnection = 'true' }
+		}
+	}
+}
+
+SetPullMode –guid $guid
+Set-DSCLocalConfigurationManager -Computer tlex01.testlabs.se -Path ./SetPullMode –Verbose

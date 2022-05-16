@@ -1,0 +1,99 @@
+<ActionDescription Class="Group" DisplayName="Client Actions on Deployment" MnemonicDisplayName="Client Actions on Deployment" Description="Created by RC Tools Editor" SqmDataPoint="53">
+<ShowOn>
+	<string>ContextMenu</string>
+</ShowOn>
+<ActionGroups>
+
+	<ActionDescription Class="Executable" DisplayName="Application Deployment Evaluation Cycle" MnemonicDisplayName="Application Deployment Evaluation Cycle" Description="Application Deployment Evaluation Cycle">
+		<ShowOn>
+			<string>ContextMenu</string>
+		</ShowOn>
+		<Executable>
+			<FilePath>"wscript.exe"</FilePath>
+			<Parameters>"C:\Program Files\SCCMConsoleExtensions\SilentOpenPS.vbs" "C:\Program Files\SCCMConsoleExtensions\Deployment Launcher.ps1" "Application Deployment Evaluation Cycle" "##SUB:SoftwareName##" "##SUB:DeploymentID##" "##SUB:AssignmentID##" "##SUB:FeatureType##" "##SUB:__Server##" "##SUB:__Namespace##"</Parameters>
+		</Executable>
+	</ActionDescription>
+
+	<ActionDescription Class="Executable" DisplayName="Discovery Data Collection Cycle" MnemonicDisplayName="Discovery Data Collection Cycle" Description="Discovery Data Collection Cycle">
+		<ShowOn>
+			<string>ContextMenu</string>
+		</ShowOn>
+		<Executable>
+			<FilePath>"wscript.exe"</FilePath>
+			<Parameters>"C:\Program Files\SCCMConsoleExtensions\SilentOpenPS.vbs" "C:\Program Files\SCCMConsoleExtensions\Deployment Launcher.ps1" "Discovery Data Collection Cycle" "##SUB:SoftwareName##" "##SUB:DeploymentID##" "##SUB:AssignmentID##" "##SUB:FeatureType##" "##SUB:__Server##" "##SUB:__Namespace##"</Parameters>
+		</Executable>
+	</ActionDescription>
+
+	<ActionDescription Class="Executable" DisplayName="Hardware Inventory Cycle" MnemonicDisplayName="Hardware Inventory Cycle" Description="Hardware Inventory Cycle">
+		<ShowOn>
+			<string>ContextMenu</string>
+		</ShowOn>
+		<Executable>
+			<FilePath>"wscript.exe"</FilePath>
+			<Parameters>"C:\Program Files\SCCMConsoleExtensions\SilentOpenPS.vbs" "C:\Program Files\SCCMConsoleExtensions\Deployment Launcher.ps1" "Hardware Inventory Cycle" "##SUB:SoftwareName##" "##SUB:DeploymentID##" "##SUB:AssignmentID##" "##SUB:FeatureType##" "##SUB:__Server##" "##SUB:__Namespace##"</Parameters>
+		</Executable>
+	</ActionDescription>
+
+	<ActionDescription Class="Executable" DisplayName="Machine Policy Retrieval and Evaluation Cycle" MnemonicDisplayName="Machine Policy Retrieval and Evaluation Cycle" Description="Machine Policy Retrieval and Evaluation Cycle">
+		<ShowOn>
+			<string>ContextMenu</string>
+		</ShowOn>
+		<Executable>
+			<FilePath>"wscript.exe"</FilePath>
+			<Parameters>"C:\Program Files\SCCMConsoleExtensions\SilentOpenPS.vbs" "C:\Program Files\SCCMConsoleExtensions\Deployment Launcher.ps1" "Machine Policy Retrieval and Evaluation Cycle" "##SUB:SoftwareName##" "##SUB:DeploymentID##" "##SUB:AssignmentID##" "##SUB:FeatureType##" "##SUB:__Server##" "##SUB:__Namespace##"</Parameters>
+		</Executable>
+	</ActionDescription>
+
+	<ActionDescription Class="Executable" DisplayName="Software Inventory Cycle" MnemonicDisplayName="Software Inventory Cycle" Description="Software Inventory Cycle">
+		<ShowOn>
+			<string>ContextMenu</string>
+		</ShowOn>
+		<Executable>
+			<FilePath>"wscript.exe"</FilePath>
+			<Parameters>"C:\Program Files\SCCMConsoleExtensions\SilentOpenPS.vbs" "C:\Program Files\SCCMConsoleExtensions\Deployment Launcher.ps1" "Software Inventory Cycle" "##SUB:SoftwareName##" "##SUB:DeploymentID##" "##SUB:AssignmentID##" "##SUB:FeatureType##" "##SUB:__Server##" "##SUB:__Namespace##"</Parameters>
+		</Executable>
+	</ActionDescription>
+
+	<ActionDescription Class="Executable" DisplayName="Software Metering Usage Report Cycle" MnemonicDisplayName="Software Metering Usage Report Cycle" Description="Software Metering Usage Report Cycle">
+		<ShowOn>
+			<string>ContextMenu</string>
+		</ShowOn>
+		<Executable>
+			<FilePath>"wscript.exe"</FilePath>
+			<Parameters>"C:\Program Files\SCCMConsoleExtensions\SilentOpenPS.vbs" "C:\Program Files\SCCMConsoleExtensions\Deployment Launcher.ps1" "Software Metering Usage Report Cycle" "##SUB:SoftwareName##" "##SUB:DeploymentID##" "##SUB:AssignmentID##" "##SUB:FeatureType##" "##SUB:__Server##" "##SUB:__Namespace##"</Parameters>
+		</Executable>
+	</ActionDescription>
+
+	<ActionDescription Class="Executable" DisplayName="Software Updates Deployment Evaluation Cycle" MnemonicDisplayName="Software Updates Deployment Evaluation Cycle" Description="Software Updates Deployment Evaluation Cycle">
+		<ShowOn>
+			<string>ContextMenu</string>
+		</ShowOn>
+		<Executable>
+			<FilePath>"wscript.exe"</FilePath>
+			<Parameters>"C:\Program Files\SCCMConsoleExtensions\SilentOpenPS.vbs" "C:\Program Files\SCCMConsoleExtensions\Deployment Launcher.ps1" "Software Updates Deployment Evaluation Cycle" "##SUB:SoftwareName##" "##SUB:DeploymentID##" "##SUB:AssignmentID##" "##SUB:FeatureType##" "##SUB:__Server##" "##SUB:__Namespace##"</Parameters>
+		</Executable>
+	</ActionDescription>
+
+	<ActionDescription Class="Executable" DisplayName="Software Updates Scan Cycle" MnemonicDisplayName="Software Updates Scan Cycle" Description="Software Updates Scan Cycle">
+		<ShowOn>
+			<string>ContextMenu</string>
+		</ShowOn>
+		<Executable>
+			<FilePath>"wscript.exe"</FilePath>
+			<Parameters>"C:\Program Files\SCCMConsoleExtensions\SilentOpenPS.vbs" "C:\Program Files\SCCMConsoleExtensions\Deployment Launcher.ps1" "Software Updates Scan Cycle" "##SUB:SoftwareName##" "##SUB:DeploymentID##" "##SUB:AssignmentID##" "##SUB:FeatureType##" "##SUB:__Server##" "##SUB:__Namespace##"</Parameters>
+		</Executable>
+	</ActionDescription>
+
+	<ActionDescription Class="Executable" DisplayName="Windows Installer Source List Update Cycle" MnemonicDisplayName="Windows Installer Source List Update Cycle" Description="Windows Installer Source List Update Cycle">
+		<ShowOn>
+			<string>ContextMenu</string>
+		</ShowOn>
+		<Executable>
+			<FilePath>"wscript.exe"</FilePath>
+			<Parameters>"C:\Program Files\SCCMConsoleExtensions\SilentOpenPS.vbs" "C:\Program Files\SCCMConsoleExtensions\Deployment Launcher.ps1" "Windows Installer Source List Update Cycle" "##SUB:SoftwareName##" "##SUB:DeploymentID##" "##SUB:AssignmentID##" "##SUB:FeatureType##" "##SUB:__Server##" "##SUB:__Namespace##"</Parameters>
+		</Executable>
+	</ActionDescription>
+
+	</ActionGroups>
+</ActionDescription>
+

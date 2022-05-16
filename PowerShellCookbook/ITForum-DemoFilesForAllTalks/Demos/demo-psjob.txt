@@ -1,0 +1,18 @@
+##############################################
+# PSJOBs
+#############################################
+$j = Start-PsJob -name ChildTest -computer localhost,localhost {"ProcessID = $PID"}
+$j | fl *
+# This job is a parent job containing a number of childjobs
+$j.ChildJobs
+Wait-PsJob $j
+# Notice that the results are combined
+Receive-PsJob $j
+Remove-PsJob $j
+# Let's do that again to show that you can work against the child jobs individually
+$j = Start-PsJob -name ChildTest -computer localhost,localhost {"ProcessID = $PID"}
+Wait-PsJob $j
+Receive-PsJob $j.ChildJobs[0]
+Receive-PsJob $j.ChildJobs[1]
+Remove-PsJob $j
+

@@ -1,0 +1,371 @@
+Listing 3.1: Retrieving ESX(i) host free partitions
+
+function Get-ScsiFreePartition{
+    <#
+    .SYNOPSIS
+        Retrieve ESX(i) Host Free Partitions.
+    .DESCRIPTION
+        Retrieve ESX(i) Host Free Partitions.
+    .NOTES
+        Source:  Automating vSphere Administration
+        Authors: Luc Dekens, Arnim van Lieshout, Jonathan Medd,
+                 Alan Renouf, Glenn Sizemore
+    .PARAMETER VMHost
+        ESX(i) Host
+    .EXAMPLE
+        Get-ScsiFreePartition -VMHost Server01
+	.EXAMPLE
+		$esxName = "esx4i.test.local"
+		$esxImpl = Get-VMHost -Name $esxName
+		$esxImpl | Get-ScsiFreePartition | ft -AutoSize
+    #>
+	param (
+	[parameter(ValueFromPipeline = $true,Position=1)]
+	[ValidateNotNullOrEmpty()]
+	[VMware.VimAutomation.ViCore.Impl.V1.Inventory.VMHostImpl]
+	$VMHost
+	)
+
+	process{
+		$esx = $VMHost | Get-View
+		$storMgr = Get-View $esx.ConfigManager.DatastoreSystem
+		$storSys = Get-View $esx.ConfigManager.StorageSystem
+
+		$lunExt = $storMgr.QueryAvailableDisksForVmfs($null)
+		foreach($lun in $lunExt){
+			$info = $storMgr.QueryVmfsDatastoreCreateOptions($lun.DevicePath)
+			foreach($dsOpt in $info){
+				$info2 = $storSys.ComputeDiskPartitionInfo($lun.DevicePath,$dsOpt.Info.Layout)
+				$info2.Layout.Partition | where {$_.Type -eq "vmfs"} | %{
+					New-Object PSObject -Property @{
+						DeviceName = $lun.DeviceName
+						DeviceSizeMB = $lun.Capacity.block * $lun.Capacity.BlockSize / 1MB
+						Partition = $_.Partition
+						PartitionSizeMB = ($_.End.block - $_.Start.Block) * $_.Start.BlockSize / 1MB
+						FullDisk = &{if($_.Partition -eq 1){$true}else{$false}}
+					}
+				}
+			}
+		}
+	}
+}
+
+
+Listing 3.2: Creating a VMFS datastore on a free disk partition
+
+function New-PartitionDatastore{
+    <#
+    .SYNOPSIS
+        Create a VMFS datastore on a free disk partition.
+    .DESCRIPTION
+        Create a VMFS datastore on a free disk partition.
+    .NOTES
+        Source:  Automating vSphere Administration
+        Authors: Luc Dekens, Arnim van Lieshout, Jonathan Medd,
+                 Alan Renouf, Glenn Sizemore
+    .PARAMETER VMHost
+        ESX(i) Host
+	.PARAMETER Partition
+        Free disk partition from Get-ScsiFreePartition
+	.PARAMETER Name
+        Name of the new VMFS datastore
+	.EXAMPLE
+		$esxName = "esx4i.test.local"
+		$esxImpl = Get-VMHost -Name $esxName
+		$partition = $esxImpl | Get-ScsiFreePartition | Where {!$_.FullDisk} | Select -First 1
+		$esxImpl | New-PartitionDatastore -Partition $partition -Name "MyDS"
+    #>
+	param (
+	[parameter(ValueFromPipeline = $true,Position=1)]
+	[ValidateNotNullOrEmpty()]
+	[VMware.VimAutomation.ViCore.Impl.V1.Inventory.VMHostImpl]
+	$VMHost,
+	[parameter(Position=2)]
+	[ValidateNotNullOrEmpty()]
+	[PSObject]
+	$Partition,
+	[parameter(Position=3)]
+	[ValidateNotNullOrEmpty()]
+	[String]
+	$Name
+	)
+
+	process{
+		$esx = $VMHost | Get-View
+		$storMgr = Get-View $esx.ConfigManager.DatastoreSystem
+
+		$lunExt = $storMgr.QueryAvailableDisksForVmfs($null)
+		$device = $lunExt | where {$_.DeviceName -eq $Partition.DeviceName}
+		$dsOpt = $storMgr.QueryVmfsDatastoreCreateOptions($Partition.DeviceName) | where {$_.Info.VmfsExtent.Partition -eq $Partition.Partition}
+
+		$spec = $dsOpt.Spec
+		$spec.Vmfs.VolumeName = $Name
+		$spec.Extent += $spec.Vmfs.Extent
+		$dsMoRef = $storMgr.CreateVmfsDatastore($spec)
+		Get-Datastore (Get-View $dsMoRef).Name
+	}
+}
+
+Listing 3.3: Retrieving ESX(i) host networking information
+
+function Get-HostDetailedNetworkInfo{
+    <#
+    .SYNOPSIS
+        Retrieve ESX(i) Host Networking Info.
+    .DESCRIPTION
+        Retrieve ESX(i) Host Networking Info using CDP.
+    .NOTES
+        Source:  Automating vSphere Administration
+        Authors: Luc Dekens, Arnim van Lieshout, Jonathan Medd,
+                 Alan Renouf, Glenn Sizemore
+    .PARAMETER VMHost
+        Name of Host to Query
+	.PARAMETER Cluster
+        Name of Cluster to Query	
+    .PARAMETER Filename
+        Name of File to Export
+    .EXAMPLE
+        Get-HostDetailedNetworkInfo -Cluster Cluster01 -Filename C:\Scripts\CDP.csv
+    #>
+	[CmdletBinding()]
+	param( 
+		[String]
+		$VMHost
+	,
+	    [String]
+        $Cluster
+    ,
+		[parameter(Mandatory=$True
+        ,    HelpMessage='Name of File to Export'
+        )]
+        [String]
+        $filename
+	)
+	
+
+Write-Host "Gathering VMHost objects"
+
+if ($Cluster){
+	$vmhosts = Get-Cluster $Cluster | Get-VMHost | Where-Object {$_.State -eq "Connected"} | Get-View
+	}
+else { 
+	$vmhosts = Get-VMHost $VMHost | Get-View
+	}
+
+$MyCol = @()
+foreach ($vmwarehost in $vmhosts){
+ $ESXHost = $vmwarehost.Name
+ Write-Host "Collating information for $ESXHost"
+ $networkSystem = Get-View $vmwarehost.ConfigManager.NetworkSystem
+ foreach($pnic in $networkSystem.NetworkConfig.Pnic){
+     $pnicInfo = $networkSystem.QueryNetworkHint($pnic.Device)
+     foreach($Hint in $pnicInfo){
+         $NetworkInfo = "" | Select-Object Host, PNic, Speed, MAC, DeviceID, PortID, Observed, VLAN
+         $NetworkInfo.Host = $vmwarehost.Name
+         $NetworkInfo.PNic = $Hint.Device
+         $NetworkInfo.DeviceID = $Hint.connectedSwitchPort.DevId
+         $NetworkInfo.PortID = $Hint.connectedSwitchPort.PortId
+         $record = 0
+         Do{
+             If ($Hint.Device -eq $vmwarehost.Config.Network.Pnic[$record].Device){
+                 $NetworkInfo.Speed = $vmwarehost.Config.Network.Pnic[$record].LinkSpeed.SpeedMb
+                 $NetworkInfo.MAC = $vmwarehost.Config.Network.Pnic[$record].Mac
+             }
+             $record ++
+         }
+         Until ($record -eq ($vmwarehost.Config.Network.Pnic.Length))
+         foreach ($obs in $Hint.Subnet){
+             $NetworkInfo.Observed += $obs.IpSubnet + " "
+             Foreach ($VLAN in $obs.VlanId){
+                 If ($VLAN -eq $null){
+                 }
+                 Else{
+                     $strVLAN = $VLAN.ToString()
+                     $NetworkInfo.VLAN += $strVLAN + " "
+                 }
+             }
+         }
+         $MyCol += $NetworkInfo
+     }
+ }
+}
+$Mycol | Sort-Object Host,PNic | Export-Csv $filename -NoTypeInformation
+
+}
+
+
+Listing 3.4 Adding resiliency to the management and vMotion port groups
+
+function Set-ManagementAndvMotionResilient{
+
+    <#
+    .SYNOPSIS
+        Add resiliency to Management and vMotion Port Groups.
+    .DESCRIPTION
+        Add resiliency to Management and vMotion Port Groups.
+    .NOTES
+        Source:  Automating vSphere Administration
+        Authors: Luc Dekens, Arnim van Lieshout, Jonathan Medd,
+                 Alan Renouf, Glenn Sizemore
+    .PARAMETER VMHost
+        Name of Host to configure
+    .PARAMETER Management
+        Name of Management Network Port Group
+    .PARAMETER vMotion
+        Name of vMotion Port Group
+    .PARAMETER NIC0
+       Name of first NIC to use
+	.PARAMETER NIC1
+       Name of second NIC to use
+    .EXAMPLE
+        Set-ManagementAndvMotionResilient -VMhost Server01 -Management 'Management Network'
+		-vMotion vMotion -NIC0 vmnic0 -NIC1 vmnic4
+    #>
+
+    [CmdletBinding()]
+    Param(
+         [parameter(Mandatory=$True
+        ,    HelpMessage='Name of Host to configure'
+        )]
+        [String]
+        $VMHost
+    ,    
+        [String]
+        $Management = 'Management Network'
+    ,    
+        [String]
+        $vMotion = 'vMotion'
+    ,    
+        [String]
+        $NIC0 = 'vmnic0'
+	,
+        [String]
+        $NIC1 = 'vmnic1'
+    )
+
+
+$ManagementNetworkPG = Get-VirtualPortgroup -VMHost $VMHost -Name $Management
+$VMotionPG = Get-VirtualPortgroup -VMHost $VMHost -Name $vMotion
+
+$ManagementNetworkPG | Get-NicTeamingPolicy | Set-NicTeamingPolicy -MakeNicActive $NIC0
+$ManagementNetworkPG | Get-NicTeamingPolicy | Set-NicTeamingPolicy -MakeNicStandby $NIC1
+
+$VMotionPG | Get-NicTeamingPolicy | Set-NicTeamingPolicy -MakeNicActive $NIC1
+$VMotionPG | Get-NicTeamingPolicy | Set-NicTeamingPolicy -MakeNicStandby $NIC0
+
+}
+
+
+Listing 3.5: Copying switches and port groups from one host to another
+
+function Copy-HostNetworking{
+
+    <#
+    .SYNOPSIS
+        Copy Switches and Port Groups from one host to another.
+    .DESCRIPTION
+        Copy Switches and Port Groups from one host to another.
+    .NOTES
+        Source:  Automating vSphere Administration
+        Authors: Luc Dekens, Arnim van Lieshout, Jonathan Medd,
+                 Alan Renouf, Glenn Sizemore
+    .PARAMETER Source
+        Name of Host to copy networking from
+    .PARAMETER Target
+        Name of Host to copy networking to
+    .EXAMPLE
+		Copy-HostNetworking -Source Server01 -Target Server02
+    #>
+
+	[CmdletBinding()]
+    Param(
+         [parameter(Mandatory=$True
+        ,    HelpMessage='Name of Host to copy networking from'
+        )]
+        [String]
+        $Source
+    ,    
+         [parameter(Mandatory=$True
+        ,    HelpMessage='Name of Host to copy networking to'
+        )]
+        [String]
+        $Target
+    )
+	
+	$SourceHost = Get-VMHost $Source	
+	$TargetHost = Get-VMHost $Target
+
+	$SourceHost | Get-VirtualSwitch | Where-Object {$_.name -ne "vSwitch0"} | Foreach {
+		If (($TargetHost | Get-VirtualSwitch -Name $_.Name -ErrorAction SilentlyContinue) -eq $null){
+			Write-Host "Creating Virtual Switch $($_.Name)"
+			$NewSwitch = $TargetHost | New-VirtualSwitch -Name $_.Name -NumPorts $_.NumPorts -Mtu $_.Mtu
+			$vSwitch = $_
+			[console]::ForegroundColor = "Yellow"
+			$FirstNIC = Read-Host "Please enter the name of the first NIC for $NewSwitch , e.g. vmnic1"
+			$SecondNIC = Read-Host "Please enter the name of the second NIC for $NewSwitch , e.g. vmnic2"
+			[console]::ResetColor()
+			$NewSwitch | Set-VirtualSwitch -Nic $FirstNIC,$SecondNIC
+		}
+		$_ | Get-VirtualPortGroup | Foreach {
+			If (($TargetHost | Get-VirtualPortGroup -Name $_.Name -ErrorAction SilentlyContinue) -eq $null){
+				Write-Host "Creating Portgroup $($_.Name)"
+				$NewPortGroup = $TargetHost | Get-VirtualSwitch -Name $vSwitch | New-VirtualPortGroup -Name $_.Name -VLanId $_.VLanID
+			}
+		}
+	}
+
+}
+
+
+Listing 3.6: Moving VMs from one port group to another
+
+function Move-ToNewPortGroup{
+
+    <#
+    .SYNOPSIS
+        Move VMs from one Port Group to another.
+    .DESCRIPTION
+        Move VMs from one Port Group to another.
+    .NOTES
+        Source:  Automating vSphere Administration
+        Authors: Luc Dekens, Arnim van Lieshout, Jonathan Medd,
+                 Alan Renouf, Glenn Sizemore
+    .PARAMETER Source
+        Name of Port Group to move from
+    .PARAMETER Target
+        Name of Port Group to move to
+    .PARAMETER Cluster
+        Name of Cluster containing VMs
+    .EXAMPLE
+		Move-ToNewPortGroup -Source PortGroup01 -Target PortGroup02 -Cluster Cluster01
+    #>
+	[CmdletBinding()]
+    Param(
+         [parameter(Mandatory=$True
+        ,    HelpMessage='Name of Port Group to move from'
+        )]
+        [String]
+        $Source
+    ,    
+         [parameter(Mandatory=$True
+        ,    HelpMessage='Name of Port Group to move to'
+        )]
+        [String]
+        $Target
+	,
+	    [String]
+        $Cluster
+    )
+
+		$SourceNetwork = $Source
+		$TargetNetwork = $Target		
+		
+		if ($Cluster){		
+		Get-Cluster $Cluster | Get-VM | Get-NetworkAdapter | Where-Object {$_.NetworkName -eq $SourceNetwork } | Set-NetworkAdapter -NetworkName $TargetNetwork -Confirm:$false
+		}
+		else {
+		Get-VM | Get-NetworkAdapter | Where-Object {$_.NetworkName -eq $SourceNetwork } | Set-NetworkAdapter -NetworkName $TargetNetwork -Confirm:$false
+		}
+}
+
+

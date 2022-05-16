@@ -1,0 +1,10 @@
+calc
+Get-WMIObject WIN32_Process -Filter 'Name="calc.exe"'
+Get-WMIObject WIN32_Process -Filter 'Name="calc.exe"' -Property Name,Handle
+$p = @(Get-WMIObject WIN32_Process -Filter 'Name="calc.exe"')[0]
+$p |Get-Member -MemberType method
+$p.SetPriority(64)
+$s=[WMISEARCHER]"Select name,priority from win32_process where Name='calc.exe'"
+$s.Get()
+$s.Get()
+$p.Terminate()

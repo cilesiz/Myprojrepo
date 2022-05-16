@@ -1,0 +1,9 @@
+# WORKING WITH .NET
+[System.Datetime]::ISLeapYear(2007)
+[System.DateTime]::Now
+$d = New-Object System.DateTime 2007,12,25
+$d
+$d - [System.DateTime]::now
+$d.DayofWeek
+$d.AddDays(-42)
+

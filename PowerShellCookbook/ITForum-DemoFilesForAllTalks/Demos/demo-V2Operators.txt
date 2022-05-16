@@ -1,0 +1,38 @@
+# PS V2 has 2 new operators -Split and -Join
+###########################################################
+# SPLIT
+###########################################################
+$days="Sunday,Monday,Tuesday,Wednesday,Thursday,Friday,Saturday"
+$days
+# Split splits strings based upon a deliminator
+$days -Split ","
+# You can specify how many items you want is split into
+$days -Split ",",2
+$days -Split ",",3
+$days -Split ",",4
+# You can specify a string for a deliminator
+$days -Split "day"
+# Split can work on streams of objects
+$days,$days -split ","
+# It operates on each object individually though
+$days,$days -split ",",3
+# Split works on strings so if you pass it an object
+# the object is turned into a string and then operated on
+Get-Process lsass
+(Get-Process lsass).ToString()
+(Get-Process *ss) -split " - "
+# You can also use a script block to determine when to split
+$days -split {$_ -match "[,.:TD]"}
+# There is a unary version of split which splits upon Whitespace
+-split "Now is`tthe`ntime       to install PowerShell"
+###########################################################
+# JOIN
+###########################################################
+$DayArray = "Sunday", "Monday","Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"
+$DayArray
+$DayArray -Join "/"
+$DayArray -Join " then "
+# -Join works against streams of objects as well
+(gps *ss) -Join ";"
+# -Join also has a unary version
+-Join $DayArray

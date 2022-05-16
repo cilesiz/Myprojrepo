@@ -1,0 +1,11 @@
+Example 1:
+
+Get-SMIMEConfig
+
+Set-SmimeConfig -OWAAllowUserChoiceOfSigningCertificate $true -OWAEncryptionAlgorithms 6602:128
+
+Get-ChildItem –Path "Cert:\LocalMachine\CA\175AC872CA60AAD30FBBC66228A706CDA8E4B787" | Export-Certificate -Type SST -FilePath C:\Media\SMIME\testlabsca.sst
+
+Set-SmimeConfig -SMIMECertificateIssuingCA (Get-Content C:\Media\SMIME\testlabsca.sst -Encoding Byte)
+
+Certreq -Enroll S-MIME

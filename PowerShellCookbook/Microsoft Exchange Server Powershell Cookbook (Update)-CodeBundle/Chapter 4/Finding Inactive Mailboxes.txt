@@ -1,0 +1,14 @@
+Example 1:
+
+$mailboxes = Get-Mailbox -ResultSize Unlimited
+$mailboxes | ?{
+  (Get-MailboxStatistics $_).LastLogonTime -and `
+  (Get-MailboxStatistics $_).LastLogonTime -le `
+  (Get-Date).AddDays(-90)
+}
+
+
+Example 2:
+
+Get-User -ResultSize Unlimited -RecipientTypeDetails UserMailbox | 
+  ?{$_.UserAccountControl -match 'AccountDisabled'}

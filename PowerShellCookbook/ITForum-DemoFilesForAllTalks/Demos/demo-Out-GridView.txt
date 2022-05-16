@@ -1,0 +1,16 @@
+# Out-GridView is an early version of a graphical tool
+# It supports:
+#    - Column Sorting
+#    - Grouping
+#    - Searching
+#    - Column Searching
+# Click on the Column header to sort
+# Right Click in the header to select GROUPBY and then click on
+#   a Column header to group by that column
+# Type a TERM (e.g. "Man") in the filter to search across all properties
+# Type a ColumnName:TERM (e.g. "Name:Man") in the filter to search for that
+# term in that column.
+Get-Service | Out-GridView
+# Currently it does not allow you to pick which properties.
+# You use Select to do that
+Get-Service | Select [dn]*ame,status,Servicetype |Out-GridView

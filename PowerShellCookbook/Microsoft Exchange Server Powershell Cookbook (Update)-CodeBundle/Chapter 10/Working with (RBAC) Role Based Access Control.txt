@@ -1,0 +1,29 @@
+Example 1:
+
+Add-RoleGroupMember -Identity "Server Management" -Member bwelch
+
+
+Example 2:
+
+Get-ManagementRoleAssignment -RoleAssignee 'Server Management' | 
+  Select-Object Role
+
+
+Example 3:
+
+Get-ManagementRoleEntry 'Exchange Server\*'
+
+  
+Example 4:
+
+New-ManagementRoleAssignment -Role ‘Mailbox Import Export’ `
+-User administrator
+
+New-ManagementRoleAssignment -Role ‘Mailbox Import Export’ `
+-SecurityGroup GroupName
+
+
+Example 5:
+
+Get-RoleAssignmentPolicy "Default Role Assignment Policy" | 
+  Format-List AssignedRoles

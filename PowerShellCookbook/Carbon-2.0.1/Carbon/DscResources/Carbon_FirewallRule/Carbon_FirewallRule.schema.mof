@@ -1,0 +1,82 @@
+/*
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+[ClassVersion("2.0.0.0"), FriendlyName("Carbon_FirewallRule")]
+class Carbon_FirewallRule : OMI_BaseResource
+{
+	[Key] 
+    string Name;
+
+	[Write] 
+    boolean Enabled;
+
+	[Write, 
+     ValueMap{"In","Out"}, 
+     Values{"In","Out"}] 
+    string Direction;
+
+	[Write, 
+     ValueMap{"Any","Domain","Private","Public"}, 
+     Values{"Any","Domain","Private","Public"}] 
+    string Profile;
+
+    [Write] 
+    string LocalIPAddress;
+
+    [Write] 
+    string LocalPort;
+
+    [Write] 
+    string RemoteIPAddress;
+
+    [Write] 
+    string RemotePort;
+
+	[Write] 
+    string Protocol;
+
+	[Write, 
+     ValueMap{"No","Yes","DeferUser","DeferApp"}, 
+     Values{"No","Yes","DeferUser", "DeferApp"}] 
+    string EdgeTraversalPolicy;
+
+	[Write, 
+     ValueMap{"Allow","Block","Bypass"},
+     Values{"Allow","Block","Bypass"}] 
+    string Action;
+
+	[Write, 
+     ValueMap{"Any","LAN","Wireless","RAS"}, 
+     Values{"Any","LAN","Wireless","RAS"}] 
+    string InterfaceType;
+
+    [Write, 
+     ValueMap{"NotRequired","Authenticate","AuthEnc","AuthDynEnc","AuthNoEncap"}, 
+     Values{"NotRequired","Authenticate","AuthEnc","AuthDynEnc","AuthNoEncap"}] 
+    string Security;
+
+	[Write] 
+    string Description;
+
+	[Write] 
+    string Program;
+
+	[Write] 
+    string Service;
+	
+    [Write, 
+     ValueMap{"Present","Absent"}, 
+     Values{"Present","Absent"}] 
+    string Ensure;
+};

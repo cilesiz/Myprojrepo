@@ -1,0 +1,403 @@
+################################################################
+# Listing 7.1: Changing virtual machine memory offline
+################################################################
+Get-VM VM001 | Shutdown-VMGuest -Confirm:$false
+While ((Get-VM VM001).PowerState -eq "PoweredOn"){
+  Sleep -Seconds 2
+}
+Get-VM VM001 | Set-VM -MemoryMB $MemoryMB -Confirm:$false
+Get-VM VM001 | Start-VM -Confirm:$false
+
+################################################################
+# Listing 7.2: Changing virtual machine memory and vCPU offline
+################################################################
+function Set-VMOffline {
+<#
+.SYNOPSIS
+  Changes the vCPU and memory configuration of the
+  virtual machine Offline
+.DESCRIPTION
+  This function changes the vCPU and memory configuration of
+  the virtual machine Offline
+.NOTES
+  Source:  Automating vSphere Administration
+  Authors: Luc Dekens, Arnim van Lieshout, Jonathan Medd,
+           Alan Renouf, Glenn Sizemore
+.PARAMETER VM
+  Specify the virtual machine
+.PARAMETER MemoryMB
+  Specify the memory size in MB
+.PARAMETER NumCpu
+  Specify the number of virtual CPUs
+.PARAMETER TimeOut
+  Specify the number of seconds to wait for the vm to shut down
+  gracefully. Default timeout is 300 seconds
+.PARAMETER Force
+  Switch parameter to forcibly shutdown the virtual machine
+  after timeout
+.EXAMPLE
+  PS> Get-VM VM001 | Set-VMOffline -memoryMB 4096 -numCpu 2 -timeOut 60
+#>
+
+  Param (
+    [parameter(valuefrompipeline = $true, mandatory = $true,
+    HelpMessage = "Enter a vm entity")]
+      [VMware.VimAutomation.ViCore.Impl.V1.Inventory.VirtualMachineImpl]$VM,
+    [int64]$memoryMB,
+    [int32]$numCpu,
+    [Int32]$timeOut = 300,
+    [switch]$force)
+    
+  Process {
+    if ($memoryMB -or $numCpu) {
+      if ((Get-VM $vm).PowerState -eq "PoweredOn") {
+        $powerState = "On"
+        Shutdown-VMGuest $vm -Confirm:$false | Out-Null 
+      }
+      $startTime = Get-Date
+      While (((Get-VM $vm).PowerState -eq "PoweredOn") -and (((Get-Date) - $startTime).totalseconds -lt $timeOut)) {
+        Sleep -Seconds 2
+      }
+      if ((Get-VM $vm).PowerState -eq "PoweredOff" -or $force) {
+        if ((Get-VM $vm).PowerState -eq "PoweredOn") {
+          Write-Warning "The shutdown guest operation timed out"
+          Write-Warning "Forcing shutdown"
+          Stop-VM $VM -Confirm:$false | Out-Null
+        }
+        if ($memoryMB -and $numCpu) {
+          Set-VM $vm -MemoryMB $MemoryMB -NumCpu $numCpu -Confirm:$false | Out-Null 
+        }
+        elseif ($memoryMB) {
+          Set-VM $vm -MemoryMB $MemoryMB -Confirm:$false | Out-Null
+        }
+        elseif ($numCpu) {
+          Set-VM $vm -NumCpu $numCpu -Confirm:$false | Out-Null
+        }
+        else {
+          Write-Error "No value for -memoryMB or -numCpu supplied"
+        }
+        if ($powerState -eq "On") {
+          Start-VM $vm | Out-Null
+        }
+      }
+      else {
+        Write-Error "The shutdown guest operation timed out"
+      }
+    }
+    else {
+      Write-Error "No value for -memoryMB or -numCpu supplied"
+    }
+  }
+}
+
+################################################################
+# Listing 7.3: Changing the guest’s IP address
+################################################################
+$hostCred = $Host.UI.PromptForCredential("Please enter host credentials","Enter ESX host credentials", "root", "")
+$guestCred = $Host.UI.PromptForCredential("Please enter guest credentials","Enter Guest credentials", "", "")
+$srcIP = "192.168.1.1"
+$destIP = "192.168.2.2"
+$destMask = "255.255.255.0"
+$destGateway = "192.168.2.254"
+Get-VM VM001 | Get-VMGuestNetworkInterface -HostCredential $hostCred -GuestCredential $guestCred | `
+    ?{$_.IP -eq $srcIP} | Set-VMGuestNetworkInterface -HostCredential $hostCred -GuestCredential $guestCred `
+    -Ip $destIP -Netmask $destMask -Gateway $destGateway
+
+################################################################
+# Listing 7.4: Determining which virtual disk corresponds to which Windows disk
+################################################################
+function Get-VMDiskMapping {
+<#
+.SYNOPSIS
+  Creates a report to match Windows disk numbers and their
+  virtual disk counterparts.
+.DESCRIPTION
+  This function creates an overview of the virtual machine's
+  virtual disks and their Windows counterparts.
+.NOTES
+  Source:  Automating vSphere Administration
+  Authors: Luc Dekens, Arnim van Lieshout, Jonathan Medd,
+           Alan Renouf, Glenn Sizemore
+.PARAMETER VM
+  Specify the virtual machine to report on.
+.PARAMETER HostCredential
+  Specify a PSCredential object containing the credentials you
+  want to use for authenticating with the host.
+.PARAMETER GuestCredential
+  Specify a PSCredential object containing the credentials you
+  want to use for authenticating with the VM guest OS.
+.EXAMPLE
+  PS> Get-VM VM001 | Get-VMDiskMapping
+.EXAMPLE
+  PS> Get-VM VM001 | Get-VMDiskMapping -hostCredential $hostCred -guestCredential $guestCred | Out-GridView
+#>
+
+  Param (
+    [parameter(valuefrompipeline = $true, mandatory = $true,
+    HelpMessage = "Enter a vm entity")]
+      [VMware.VimAutomation.ViCore.Impl.V1.Inventory.VirtualMachineImpl]$VM,
+    [Parameter(Mandatory = $true,
+    HelpMessage = "Enter a PSCredential object for the host")]
+      [System.Management.Automation.PSCredential]$hostCredential,
+    [Parameter(Mandatory = $true,
+    HelpMessage = "Enter a PSCredential object for the guest")]
+      [System.Management.Automation.PSCredential]$guestCredential)
+    
+  $diskInfo= @()
+#Create vbs scriptfile
+  $FileName = [System.IO.Path]::GetTempFileName()
+'Set objReg = GetObject("winmgmts:{impersonationLevel=impersonate}!\\.\root\default:StdRegProv")' > $filename
+'Set objWMI = GetObject("winmgmts:{impersonationLevel=impersonate}!\\.\root\cimv2")' >> $filename
+'Set colPCISlotNumber = CreateObject("Scripting.Dictionary")' >> $filename
+'objReg.EnumKey &H80000002,"SYSTEM\CurrentControlSet\Enum\PCI", colHardwareId' >> $filename
+'For Each HardwareId In colHardwareId' >> $filename
+'  objReg.EnumKey &H80000002,"SYSTEM\CurrentControlSet\Enum\PCI\" & HardwareId, colControllerId' >> $filename
+'  For Each ControllerId In colControllerId' >> $filename
+'    objReg.GetDWORDValue &H80000002,"SYSTEM\CurrentControlSet\Enum\PCI\" & HardwareId & "\" & ControllerId, "UINumber", dwUINumber' >> $filename
+'    colPCISlotNumber.Add "PCI\" & UCase(HardwareId) & "\" & UCase(ControllerId), dwUINumber' >> $filename
+'  Next' >> $filename
+'Next' >> $filename
+'Set colDiskDrive = objWMI.ExecQuery("Select * from Win32_DiskDrive")' >> $filename
+'Set colSCSIControllerDevice = objWMI.ExecQuery("Select * from Win32_SCSIControllerDevice")' >> $filename
+'WScript.Echo "DiskPNPDeviceId,Index,SCSIPort,SCSITargetId,Size,CtrlPNPDeviceId,CtrlPCISlotNumber"' >> $filename
+'For Each Disk in colDiskDrive' >> $filename
+'  For Each item in colSCSIControllerDevice' >> $filename
+'    If Replace(Split(item.Dependent,chr(34))(1),"\\","\") = Disk.PNPDeviceId Then' >> $filename
+'      CtrlPNPDeviceId = UCase(Replace(Split(item.Antecedent,chr(34))(1),"\\","\"))' >> $filename
+'      Exit For' >> $filename
+'    End If' >> $filename
+'  Next' >> $filename
+'  WScript.Echo Disk.PNPDeviceId & "," & Disk.Index & "," & Disk.SCSIPort & "," & Disk.SCSITargetId & "," & Disk.Size & "," & CtrlPNPDeviceId & "," & colPCISlotNumber.Item(CtrlPNPDeviceId)' >> $filename
+'Next' >> $filename
+#Determine location to copy script to
+  $temp = Invoke-VMScript "echo %temp%" -vm $VM -HostCredential $hostCredential -GuestCredential $guestCredential -ScriptType "bat"
+  $destFileName = $temp.Trim("`r`n") + "\guestScsiInfo.vbs"
+  Copy-VMGuestFile -Source $FileName -Destination $destFileName -VM $VM -LocalToGuest -HostCredential $hostCredential -GuestCredential $guestCredential
+  Remove-Item $FileName
+#Get Windows disk info
+  $error.Clear()
+  $Out = Invoke-VMScript "cscript /nologo $destFileName && del $destFileName" `
+    -vm $VM -HostCredential $hostCredential `
+    -GuestCredential $guestCredential -ScriptType "bat"
+  if (!$error -and $out) {
+#Export plaintext Windows disk info to temporary file and 
+#import it again using the Import-Csv CmdLet
+    $FileName = [System.IO.Path]::GetTempFileName()
+    $Out > $FileName
+    $WinDisks = Import-Csv $FileName
+    Remove-Item $FileName
+#Determine SCSIPort offset
+    $portOffset = ($WinDisks | ?{$_.SCSIPort} | Measure-Object -Property SCSIPort -Minimum).Minimum
+#All entries that don't match any known pciSlotNumber are
+#attached to scsi0. Change these entries to the pciSlotnumber
+#of scsi0
+    $scsi0pciSlotNumber = ($VM.Extensiondata.Config.ExtraConfig | ?{$_.key -like "scsi0.pciSlotNumber"}).value
+    $scsiPciSlotNumbers= @()
+    $VM.Extensiondata.Config.ExtraConfig | ?{$_.key -like "scsi?.pciSlotNumber"} | %{$scsiPciSlotNumbers += $_.value}
+    $WinDisks | %{if ($scsiPciSlotNumbers -notcontains $_.CtrlPCISlotNumber) {$_.CtrlPCISlotNumber = ($VM.ExtensionData.Config.Extraconfig | ?{$_.key -like "scsi0.pciSlotNumber"}).value}}
+#Create DiskMapping table
+    foreach ($VirtualSCSIController in ($VM.Extensiondata.Config.Hardware.Device | where {$_.DeviceInfo.Label -match "SCSI Controller"})) {
+      foreach ($VirtualDiskDevice in ($VM.Extensiondata.Config.Hardware.Device | where {$_.ControllerKey -eq $VirtualSCSIController.Key})) {
+        $VirtualDisk = "" | Select VMSCSIController, VMDiskName, SCSI_Id, VMDiskFile, VMDiskSizeGB, RawDeviceName, LunUuid, WindowsDisk, WindowsDiskSizeGB
+        $VirtualDisk.VMSCSIController = $VirtualSCSIController.DeviceInfo.Label
+        $VirtualDisk.VMDiskName = $VirtualDiskDevice.DeviceInfo.Label
+        $VirtualDisk.SCSI_Id = "$($VirtualSCSIController.BusNumber) : $($VirtualDiskDevice.UnitNumber)"
+        $VirtualDisk.VMDiskFile = $VirtualDiskDevice.Backing.FileName
+        $VirtualDisk.VMDiskSizeGB = $VirtualDiskDevice.CapacityInKB * 1KB / 1GB
+        $VirtualDisk.RawDeviceName = $VirtualDiskDevice.Backing.DeviceName
+        $VirtualDisk.LunUuid = $VirtualDiskDevice.Backing.LunUuid
+#Match disks
+        if  ($vm.version -lt "v7") {
+#For hardware v4 match disks based on controller's SCSIPort and
+#disk's SCSITargetId.
+#Not supported with mixed scsi adapter types.
+          $DiskMatch = $WinDisks | ?{($_.SCSIPort – $portOffset) -eq $VirtualSCSIController.BusNumber -and $_.SCSITargetID -eq $VirtualDiskDevice.UnitNumber}
+        }
+        else {
+#For hardware v7 match disks based on controller's pciSlotNumber
+#and disk's SCSITargetId
+          $DiskMatch = $WinDisks | ?{$_.CtrlPCISlotNumber -eq ($VM.Extensiondata.Config.Extraconfig | ?{$_.key -match "scsi$($VirtualSCSIController.BusNumber).pcislotnumber"}).value -and $_.SCSITargetID -eq $VirtualDiskDevice.UnitNumber}
+        }
+        if ($DiskMatch){
+          $VirtualDisk.WindowsDisk = "Disk $($DiskMatch.Index)"
+          $VirtualDisk.WindowsDiskSizeGB = $DiskMatch.Size / 1GB
+        }
+        else {Write-Warning "No matching Windows disk found for SCSI id $($virtualDisk.SCSI_Id)"}
+      $diskInfo += $virtualDisk
+      }
+    }
+    $diskInfo
+  }
+  else {Write-Error "Error Retrieving Windows disk info from guest"}
+}
+
+################################################################
+# Listing 7.5: Deleting virtual hard disks from the datastore
+################################################################
+function Delete-HardDisk {
+<#
+.SYNOPSIS
+  deletes the specified virtual hard disks
+.DESCRIPTION
+  Removes the specified virtual hard disks from the virtual
+  machine and deletes the files from the datastore
+.NOTES
+  Source:  Automating vSphere Administration
+  Authors: Luc Dekens, Arnim van Lieshout, Jonathan Medd,
+           Alan Renouf, Glenn Sizemore
+.PARAMETER HardDisk
+  Specify the hard disks you want to remove
+.EXAMPLE
+  PS> Get-HardDisk -VM $vm | Delete-HardDisk
+.EXAMPLE
+  PS> Get-VM VM001 | Get-HardDisk | ?{$_.Name -eq "Hard disk 2"} | Delete-HardDisk
+#>
+  
+  Param (
+    [parameter(valuefrompipeline = $true, mandatory = $true,
+    HelpMessage = "Enter a hard disk entity")]
+      [VMware.VimAutomation.ViCore.Types.V1.VirtualDevice.HardDisk]$hardDisk)
+
+  process {
+    $spec = New-Object VMware.Vim.VirtualMachineConfigSpec
+    $spec.deviceChange = New-Object VMware.Vim.VirtualDeviceConfigSpec[] (1)
+    $spec.deviceChange[0] = New-Object VMware.Vim.VirtualDeviceConfigSpec
+    $spec.deviceChange[0].operation = "remove"
+    $spec.deviceChange[0].fileOperation = "destroy"
+    $spec.deviceChange[0].device = New-Object VMware.Vim.VirtualDisk
+    $spec.deviceChange[0].device.key = $hardDisk.ExtensionData.Key
+
+    $vm = Get-View -Id $hardDisk.ParentID
+    $vm.ReconfigVM_Task($spec)
+  }
+}
+
+################################################################
+# Listing 7.6: Automated system partition expansion
+################################################################
+Get-VM VM001,VM002 | Shutdown-VMGuest -Confirm:$false
+
+While ((Get-VM VM001).PowerState -eq "PoweredOn"){Sleep -Seconds 2}
+While ((Get-VM VM002).PowerState -eq "PoweredOn"){Sleep -Seconds 2}
+
+Get-VM VM001 | Get-HardDisk | ?{$_.Name -eq "Hard disk 1"} | `
+    Set-HardDisk -CapacityKB (20GB/1KB) -HostCredential $hostCredential -GuestCredential $guestCredential -HelperVM (Get-VM VM002)
+
+Get-VM VM001,VM002 | Start-VM -Confirm:$false
+
+################################################################
+# Listing 7.7: Adding a USB controller to a VM
+################################################################
+$spec = New-Object VMware.Vim.VirtualMachineConfigSpec
+
+$deviceCfg = New-Object VMware.Vim.VirtualDeviceConfigSpec
+$deviceCfg.operation = "add"
+$deviceCfg.device = New-Object VMware.Vim.VirtualUSBController
+$deviceCfg.device.key = -1
+$deviceCfg.device.connectable = New-Object VMware.Vim.VirtualDeviceConnectInfo
+$deviceCfg.device.connectable.startConnected = $true
+$deviceCfg.device.connectable.allowGuestControl = $false
+$deviceCfg.device.connectable.connected = $true
+$deviceCfg.device.controllerKey = 100
+$deviceCfg.device.busNumber = -1
+$deviceCfg.device.autoConnectDevices = $true
+
+$spec.deviceChange += $deviceCfg
+
+$vm = Get-VM VM001 | Get-View
+$vm.ReconfigVM_Task($spec)
+
+################################################################
+# Listing 7.8: Converting thick to thin in place using a disk copy
+################################################################
+function Set-ThinDisk {
+<#
+.SYNOPSIS
+  Converts a thick hard disk to a thin provisioned
+  hard disk inplace
+.DESCRIPTION
+  Makes a thin provisioned copy of a thick hard disk on the same
+  datastore and configures the virtual machine to use the thin
+  provisioned copy
+.NOTES
+  Source:  Automating vSphere Administration
+  Authors: Luc Dekens, Arnim van Lieshout, Jonathan Medd,
+           Alan Renouf, Glenn Sizemore
+.PARAMETER HardDisk
+  Specify the hard disks you want to convert
+.PARAMETER credential
+  A PSCredential object used to authenticate the VMHost server
+.PARAMETER user
+  The user account used to authenticate the VMHost server
+.PARAMETER password
+  The password for the account specified by the -User parameter
+.PARAMETER replace
+  Optional parameter to delete the original thick file
+.EXAMPLE
+  PS> Get-VM VM001 | Get-HardDisk | Set-ThinDisk -Credentials $hostCred
+.EXAMPLE
+  PS> $hd = Get-VM VM001 | Get-HardDisk | ?{$_.Name -eq "Hard disk 2"} 
+  PS> Set-ThinDisk -hardDisk $hd -user "root" -password "password" -replace
+#>
+  Param (
+    [parameter(valuefrompipeline = $true, mandatory = $true,
+    HelpMessage = "Enter a hard disk entity")]
+      [VMware.VimAutomation.ViCore.Types.V1.VirtualDevice.HardDisk]$hardDisk,
+    [Parameter(Mandatory = $true, ParameterSetName = "cred",
+    HelpMessage = "Enter a PSCredential object")]
+      [System.Management.Automation.PSCredential]$credential,
+    [Parameter(ParameterSetName = "user")]
+    [ValidateNotNullOrEmpty()]
+      [string]$user = "root",
+    [Parameter(Mandatory = $true, ParameterSetName = "user",
+    HelpMessage = "Enter the root account password")]
+      [string]$password,
+      [switch]$replace)
+
+  process {
+    if ($hardDisk.Parent.PowerState -eq "PoweredOff") {
+      if ($hardDisk.StorageFormat -ne "Thin") {
+        if ($credential) {
+          $esxHost = Connect-VIServer -Server $hardDisk.Parent.host.name -Credential $credential -NotDefault
+        }
+        else {
+          $esxHost = Connect-VIServer -Server $hardDisk.Parent.host.name -User $user -Password $password -NotDefault
+        }
+        $thinFile = $hardDisk.Filename.Replace("/","/thin_")
+        $datastore = $hardDisk.Filename.split('[')[1].split(']')[0]
+        $esxHardDisk = Get-HardDisk -server $esxHost -Datastore $datastore -DatastorePath $hardDisk.Filename
+        Copy-HardDisk -HardDisk $esxHardDisk -DestinationPath $thinFile -DestinationStorageFormat "thin" | Out-Null
+        Disconnect-VIServer $esxHost -Confirm:$false
+
+        $spec = New-Object VMware.Vim.VirtualMachineConfigSpec
+        $spec.deviceChange = New-Object VMware.Vim.VirtualDeviceConfigSpec[] (2)
+        $spec.deviceChange[0] = New-Object VMware.Vim.VirtualDeviceConfigSpec
+        $spec.deviceChange[0].operation = "remove"
+        if ($replace) {
+          $spec.deviceChange[0].fileOperation = "destroy"
+        }
+        $spec.deviceChange[0].device = $hardDisk.ExtensionData
+
+        $spec.deviceChange[1] = New-Object VMware.Vim.VirtualDeviceConfigSpec
+        $spec.deviceChange[1].operation = "add"
+        $spec.deviceChange[1].device = New-Object VMware.Vim.VirtualDisk
+        $spec.deviceChange[1].device.key = -100
+        $spec.deviceChange[1].device.backing = New-Object VMware.Vim.VirtualDiskFlatVer2BackingInfo
+        $spec.deviceChange[1].device.backing.fileName = $thinFile
+        $spec.deviceChange[1].device.backing.diskMode = "persistent"
+        $spec.deviceChange[1].device.backing.thinProvisioned = $true
+        $spec.deviceChange[1].device.controllerKey = $hardDisk.ExtensionData.ControllerKey
+        $spec.deviceChange[1].device.unitNumber = $hardDisk.ExtensionData.UnitNumber
+
+        $vm = Get-View -Id $hardDisk.ParentID
+        $vm.ReconfigVM_Task($spec) | Out-Null
+      }
+      else {
+        Write-Error "Virtual disk already thin provisioned"
+      }
+    }
+    else {
+      Write-Error "Virtual machine must be powered off"
+    }
+  }
+}

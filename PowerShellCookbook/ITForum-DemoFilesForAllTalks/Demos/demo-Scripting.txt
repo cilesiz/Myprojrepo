@@ -1,0 +1,89 @@
+#############################################
+# PowerShell can script with lots of different DataTypes
+#############################################
+# WORKING WITH COM
+$agent = new-object -com agent.control.2
+$agent.connected = 1
+$null =$agent.characters.load("Merlin")
+$merlin = $agent.characters.character("Merlin")
+# The great thing about working with COM in Powershell is that 
+# you can find out what the COM object can do:
+$merlin | gm
+$null = $merlin.show() 
+$null = $merlin.Speak("PowerShell ROCKS")
+cls
+#############################################
+# WORKING WITH .NET
+# PowerShell can invoke static methods and properties
+[System.Datetime]::ISLeapYear(2007)
+[System.DateTime]::Now
+# PowerShell can create new .net Objects
+$d = New-Object System.DateTime 2007,12,25
+$d
+# Everything you can do to a .NET object, you can do
+# via PowerShell
+$d - [System.DateTime]::now
+$d.AddDays(-42)
+$null=$merlin.Speak(("Christmas will be on " + $d.DayofWeek))
+$null = $merlin.Hide()
+# You can even write WinForm applications using Powershell
+Notepad .\Get-GuiInput.ps1
+.\Get-GuiInput "What does PowerShell do?" "[rR]ocks|[rR]ules"
+cls
+#############################################
+# You can script against cmdlets
+get-process lsass
+get-process lsass |fl *
+get-process lsass |Select ProcessName -Expand Modules -ea silentlycontinue |ft ProcessName,ModuleName
+get-process |Select ProcessName -Expand Modules -ea silentlycontinue |Group ModuleName |sort count |select -last 10 -ov a
+$a[9]
+$a[9].Group |Ft ProcessName
+cls
+#############################################
+# You can script against WMI
+# We'll start calc so we have something to work with
+calc
+Get-WMIObject WIN32_Process -Filter 'Name="calc.exe"'
+Get-WMIObject WIN32_Process -Filter 'Name="calc.exe"' -Property Name,Handle
+$p = @(Get-WMIObject WIN32_Process -Filter 'Name="calc.exe"')[0]
+$p |Get-Member -MemberType method
+# You can invoke methods on objects
+$p.SetPriority(64)
+# PowerShell provide direct support for 
+# WMI searches through [WMISEARCHER]
+# You can give it any valid WQL statement
+$s=[WMISEARCHER]"Select name,priority from win32_process where Name='calc.exe'"
+$s.Get()
+# You can rerun the query
+$s.Get()
+$p.Terminate()
+cls
+#############################################
+# You can script against XML
+#ii r_and_j.xml
+# XML is a native datatype in PowerShell
+$S = [XML](cat r_and_j.xml)
+$s
+$s.Play
+# PowerShell allows you to access the DataModel of XML
+$s.PLAY.ACT[0] |GM -Type Property
+$s.Play.Act[0].Scene[1]
+$s.Play.Act[0].Scene[1].Speech
+# You can leverage all of PowerShell's utilities against xml
+$s.Play.Act[0].Scene[1].speech |where {$_.speaker -eq "Romeo"} |sort line
+$x = $s.Play |Select -Expand Act|Select -Expand Scene |Select -Expand Speech
+$x[0..4]
+$null=$merlin.Show();$null=$merlin.Speak($x[0].Line)
+$null=$merlin.hide()
+$x |group Speaker |sort count
+#############################################
+# You can script against ADO
+$d = New-Object System.Data.DataSet
+$d.ReadXmlSchema( "G:\CTP\Demos\northwind_schema.xsd")
+$null=$d.ReadXml( "G:\ctp\Demos\northwind_data.xml")
+$d.tables[0] | Get-member -type property
+$d.tables[0] |select -first 2
+$d.tables[0] |select -first 5 |ft companyname,contactname,country -auto
+$d.tables[0] |group Country |sort count
+$d.tables[0] | out-gridview
+### EOD ########

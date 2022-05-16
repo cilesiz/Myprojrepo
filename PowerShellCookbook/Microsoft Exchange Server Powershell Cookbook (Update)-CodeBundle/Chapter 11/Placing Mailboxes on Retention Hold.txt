@@ -1,0 +1,37 @@
+Example 1:
+
+Set-Mailbox -Identity dsmith -RetentionHoldEnabled $true
+
+Set-Mailbox -Identity dsmith -RetentionHoldEnabled $false
+
+
+Example 2:
+
+Set-Mailbox -Identity dsmith `
+-RetentionHoldEnabled $true `
+–RetentionComment "You are currently on retention hold"
+
+
+Example 3:
+
+Get-DistributionGroupMember -Identity Marketing | 
+  Set-Mailbox -RetentionHoldEnabled $true
+
+
+Example 4:
+
+Get-Mailbox -Database DB01 | 
+  Set-Mailbox -RetentionHoldEnabled $true
+
+
+Example 5:
+
+Set-Mailbox -Identity dsmith -RetentionHoldEnabled $true `
+-StartDateForRetentionHold '5/1/2015 8:00:00 AM' `
+-EndDateForRetentionHold '5/30/2015 5:00:00 PM'
+
+
+Example 6:
+
+Get-Mailbox –ResultSize Unlimited | 
+  Where-Object{$_.RetentionHoldEnabled}

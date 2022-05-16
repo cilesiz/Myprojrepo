@@ -1,0 +1,50 @@
+Automated Shadow session:
+ID                : 10123
+RequestorCDSID    : pmart272
+AdminCDSID        : $PMART272
+ManagerCDSID      : RLOPE149
+UserCDSID         : PMART272
+Server            : FCVAS755.FMC4Q.FORD.COM
+Start             : 5/12/2015 4:00:00 AM
+End               : 5/12/2015 5:00:00 AM
+Reason            : Check Scriptura implementation for South Africa
+Approvers         : CHERRAEZ
+RequestedDate     : 5/12/2015 2:27:48 AM
+Status            : 3
+Comment           : 
+UserDept          : FINANCIAL
+Approver          : 
+LocalStart        : 5/12/2015 1:30:00 PM
+LocalTimezone     : India Standard Time
+Ticket            : ticket..
+TicketApprovedDate: 
+
+Stopping Results
+Errors        : 
+Server        : FCVAS755.FMC4Q.FORD.COM
+Success       : True
+UserRemoved   : True
+TaskRemoved   : True
+Task          : Get-Diff
+UserLoggedOff : True
+User          : $PMART272
+
+Please complete the following tasks on FCVAS755.FMC4Q.FORD.COM:
+- Ensure that $PMART272 has been removed from local administators group
+- Ensure that Get-Diff task has been removed
+- Ensure that $PMART272 has been logged out
+- Use Splunk to verify $PMART272 didn't make changes not outlined in the stated reason:
+
+Check Scriptura implementation for South Africa
+
+Splunk Link:
+http://fcis729.fmc2.ford.com:8000/en-US/app/windows_data_app/windows_server_changes?form.host=FCVAS755&earliest=-30d%40d&latest=now
+
+** If there are no results in Splunk, please check for the log files located at: "\\FCVAS755.FMC4Q.FORD.COM\c$\Program Files\Ford\Get-Diff\current"
+
+*****************************************************************************************************
+To find the Local Admin mem
+$group =[ADSI]"WinNT://$($env:COMPUTERNAME)/Administrators"
+
+ @($group.Invoke("Members")) | foreach {$_.GetType().InvokeMember("Name", 'GetProperty', $null, $_, $null)}
+

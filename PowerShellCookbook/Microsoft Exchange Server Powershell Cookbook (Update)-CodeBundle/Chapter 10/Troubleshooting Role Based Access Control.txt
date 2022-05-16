@@ -1,0 +1,29 @@
+Example 1:
+
+Get-ManagementRoleAssignment -GetEffectiveUsers | 
+  Where-Object {$_.EffectiveUserName -eq 'sysadmin'}
+
+
+Example 2:
+
+Get-ManagementRoleAssignment -Role 'Legal Hold' -GetEffectiveUsers
+
+
+Example 3:
+
+Get-ManagementRoleAssignment -WritableRecipient djones `
+  -GetEffectiveUsers | 
+    Where-Object{$_.EffectiveUserName -eq 'sysadmin'}
+
+
+Example 4:
+
+Get-RoleGroup 'Organization Management' | Get-RoleGroupMember
+
+
+Example 5:
+
+foreach($rg in Get-RoleGroup) {
+  Get-RoleGroupMember $rg | 
+    Select-Object Name,@{n="RoleGroup";e={$rg.Name}}
+}

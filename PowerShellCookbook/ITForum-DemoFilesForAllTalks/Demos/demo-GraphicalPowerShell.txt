@@ -1,0 +1,7 @@
+# Graphical PowerShell (gpowershell) is a graphical editor
+# Ctrl-O to open a script
+# Ctrl-N to create a New Script
+# Ctrl-T to start a new RUNSPACE
+# F5 to run the current script
+# Highlight code and F5 to run the highlighted code
+gpowershell

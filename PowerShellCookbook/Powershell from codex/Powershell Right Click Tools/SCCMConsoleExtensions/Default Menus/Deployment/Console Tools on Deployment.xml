@@ -1,0 +1,85 @@
+<ActionDescription Class="Group" DisplayName="Console Tools on Deployment" MnemonicDisplayName="Console Tools on Deployment" Description="Created by RC Tools Editor" SqmDataPoint="53">
+<ShowOn>
+	<string>ContextMenu</string>
+</ShowOn>
+<ActionGroups>
+
+	<ActionDescription Class="Executable" DisplayName="Ping Deployment" MnemonicDisplayName="Ping Deployment" Description="Ping Deployment">
+		<ShowOn>
+			<string>ContextMenu</string>
+		</ShowOn>
+		<Executable>
+			<FilePath>"wscript.exe"</FilePath>
+			<Parameters>"C:\Program Files\SCCMConsoleExtensions\SilentOpenPS.vbs" "C:\Program Files\SCCMConsoleExtensions\Deployment Launcher.ps1" "Ping" "##SUB:SoftwareName##" "##SUB:DeploymentID##" "##SUB:AssignmentID##" "##SUB:FeatureType##" "##SUB:__Server##" "##SUB:__Namespace##"</Parameters>
+		</Executable>
+	</ActionDescription>
+
+	<ActionDescription Class="Executable" DisplayName="System Information" MnemonicDisplayName="System Information" Description="System Information">
+		<ShowOn>
+			<string>ContextMenu</string>
+		</ShowOn>
+		<Executable>
+			<FilePath>"wscript.exe"</FilePath>
+			<Parameters>"C:\Program Files\SCCMConsoleExtensions\SilentOpenPS.vbs" "C:\Program Files\SCCMConsoleExtensions\Deployment Launcher.ps1" "System Information" "##SUB:SoftwareName##" "##SUB:DeploymentID##" "##SUB:AssignmentID##" "##SUB:FeatureType##" "##SUB:__Server##" "##SUB:__Namespace##"</Parameters>
+		</Executable>
+	</ActionDescription>
+
+	<ActionDescription Class="Executable" DisplayName="Wake on LAN" MnemonicDisplayName="Wake on LAN" Description="Wake on LAN">
+		<ShowOn>
+			<string>ContextMenu</string>
+		</ShowOn>
+		<Executable>
+			<FilePath>"wscript.exe"</FilePath>
+			<Parameters>"C:\Program Files\SCCMConsoleExtensions\SilentOpenPS.vbs" "C:\Program Files\SCCMConsoleExtensions\Deployment Launcher.ps1" "Wake on LAN" "##SUB:SoftwareName##" "##SUB:DeploymentID##" "##SUB:AssignmentID##" "##SUB:FeatureType##" "##SUB:__Server##" "##SUB:__Namespace##"</Parameters>
+		</Executable>
+	</ActionDescription>
+
+	<ActionDescription Class="Separator">
+		<ShowOn>
+			<string>ContextMenu</string>
+		</ShowOn>
+	</ActionDescription>
+
+	<ActionDescription Class="Executable" DisplayName="Cancel Pending Restart or Shutdown" MnemonicDisplayName="Cancel Pending Restart or Shutdown" Description="Cancel Pending Restart or Shutdown">
+		<ShowOn>
+			<string>ContextMenu</string>
+		</ShowOn>
+		<Executable>
+			<FilePath>"wscript.exe"</FilePath>
+			<Parameters>"C:\Program Files\SCCMConsoleExtensions\SilentOpenPS.vbs" "C:\Program Files\SCCMConsoleExtensions\Deployment Launcher.ps1" "Cancel Pending Shutdown" "##SUB:SoftwareName##" "##SUB:DeploymentID##" "##SUB:AssignmentID##" "##SUB:FeatureType##" "##SUB:__Server##" "##SUB:__Namespace##"</Parameters>
+		</Executable>
+	</ActionDescription>
+
+	<ActionDescription Class="Executable" DisplayName="Schedule Restart or Shutdown" MnemonicDisplayName="Schedule Restart or Shutdown" Description="Schedule Restart or Shutdown">
+		<ShowOn>
+			<string>ContextMenu</string>
+		</ShowOn>
+		<Executable>
+			<FilePath>"wscript.exe"</FilePath>
+			<Parameters>"C:\Program Files\SCCMConsoleExtensions\SilentOpenPS.vbs" "C:\Program Files\SCCMConsoleExtensions\Deployment Launcher.ps1" "Schedule Restart or Shutdown" "##SUB:SoftwareName##" "##SUB:DeploymentID##" "##SUB:AssignmentID##" "##SUB:FeatureType##" "##SUB:__Server##" "##SUB:__Namespace##"</Parameters>
+		</Executable>
+	</ActionDescription>
+
+	<ActionDescription Class="Executable" DisplayName="Restart Devices" MnemonicDisplayName="Restart Devices" Description="Restart Devices">
+		<ShowOn>
+			<string>ContextMenu</string>
+		</ShowOn>
+		<Executable>
+			<FilePath>"wscript.exe"</FilePath>
+			<Parameters>"C:\Program Files\SCCMConsoleExtensions\SilentOpenPS.vbs" "C:\Program Files\SCCMConsoleExtensions\Deployment Launcher.ps1" "Restart" "##SUB:SoftwareName##" "##SUB:DeploymentID##" "##SUB:AssignmentID##" "##SUB:FeatureType##" "##SUB:__Server##" "##SUB:__Namespace##"</Parameters>
+		</Executable>
+	</ActionDescription>
+
+	<ActionDescription Class="Executable" DisplayName="Shutdown Devices" MnemonicDisplayName="Shutdown Devices" Description="Shutdown Devices">
+		<ShowOn>
+			<string>ContextMenu</string>
+		</ShowOn>
+		<Executable>
+			<FilePath>"wscript.exe"</FilePath>
+			<Parameters>"C:\Program Files\SCCMConsoleExtensions\SilentOpenPS.vbs" "C:\Program Files\SCCMConsoleExtensions\Deployment Launcher.ps1" "Shutdown" "##SUB:SoftwareName##" "##SUB:DeploymentID##" "##SUB:AssignmentID##" "##SUB:FeatureType##" "##SUB:__Server##" "##SUB:__Namespace##"</Parameters>
+		</Executable>
+	</ActionDescription>
+
+	</ActionGroups>
+</ActionDescription>
+

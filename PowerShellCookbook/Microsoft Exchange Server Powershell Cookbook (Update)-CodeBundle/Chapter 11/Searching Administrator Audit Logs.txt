@@ -1,0 +1,26 @@
+Example 1:
+
+Search-AdminAuditLog -Cmdlets Set-Mailbox `
+-StartDate 5/1/2015 `
+-EndDate 5/30/2015 `
+-IsSuccess $true
+
+New-AdminAuditLogSearch -Name "AdminAuditLogSearch01" `
+-Cmdlets Set-Mailbox `
+-StartDate 5/1/2015 `
+-EndDate 5/30/2015 `
+-StatusMailRecipients admin@contoso.com
+
+
+Example 2:
+
+Search-AdminAuditLog | ?{$_.ObjectModified -like '*nate*'}
+
+
+Example 3:
+
+$logs = Search-AdminAuditLog | Select-Object -First 10
+
+$logs[0]
+
+$logs[0].ModifiedProperties | Format-List 

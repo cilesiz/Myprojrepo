@@ -1,0 +1,46 @@
+Example 1:
+
+New-ManagementRoleAssignment –Role "Mailbox Import Export" `
+-User administrator
+
+
+Example 2:
+
+Search-Mailbox -Identity testuser `
+-SearchQuery "Subject:'suppress'" `
+-DeleteContent `
+-Force
+
+
+Example 3:
+
+Search-Mailbox -Identity testuser `
+-SearchQuery "Subject:'free ipad'" `
+-DoNotIncludeArchive `
+-SearchDumpster:$false `
+-DeleteContent `
+-Force
+
+
+Example 4:
+
+Get-Mailbox | 
+  Search-Mailbox -SearchQuery "from:spammer@contoso.com" `
+      -EstimateResultOnly | Export-CSV C:\report.csv -NoType
+
+	  
+Example 5:
+
+Search-Mailbox -Identity testuser `
+-SearchQuery "Subject:'Accounting Reports'" `
+-TargetMailbox sysadmin `
+-TargetFolder "Delete Log" `
+-LogOnly `
+-LogLevel Full
+
+
+Example 6:
+
+Get-Mailbox -ResultSize Unlimited | 
+  Search-Mailbox -SearchQuery 'from:spammer@contoso.com' `
+  -DeleteContent -Force

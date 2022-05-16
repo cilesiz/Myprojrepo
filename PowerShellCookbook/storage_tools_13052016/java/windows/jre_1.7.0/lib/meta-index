@@ -1,0 +1,118 @@
+% VERSION 2
+% WARNING: this file is auto-generated; do not edit
+% UNSUPPORTED: this file and its format may change and/or
+%   may be removed in a future release
+# charsets.jar
+sun/nio
+sun/io
+sun/awt
+META-INF/services/java.nio.charset.spi.CharsetProvider
+! ibmcertpathfw.jar
+java/security
+! ibmcertpathprovider.jar
+com/ibm/
+# ibmjcefw.jar
+ibm/security/
+META-INF/IBMFW4.DSA
+javax/crypto
+META-INF/IBMFW4.SF
+! ibmjgssfw.jar
+org/ietf/
+javax/security
+# ibmjgssprovider.jar
+com/ibm/
+! ibmjssefw.jar
+javax/net
+javax/security
+! ibmjsseprovider2.jar
+com/ibm/
+! ibmpkcs.jar
+com/ibm/
+java/security
+! ibmsaslfw.jar
+javax/security
+# jce.jar
+META-INF/ORACLE_J.RSA
+META-INF/ORACLE_J.SF
+sun/security
+javax/crypto
+! jsse.jar
+! management-agent.jar
+@ resources.jar
+META-INF/services/com.sun.tools.internal.xjc.Plugin
+javax/swing
+sun/rmi
+META-INF/services/javax.sound.midi.spi.MidiFileWriter
+sun/text
+META-INF/services/javax.sound.midi.spi.SoundbankReader
+javax/sql
+com/sun/rowset/
+META-INF/services/java.sql.Driver
+sun/net
+META-INF/services/javax.sound.sampled.spi.AudioFileWriter
+META-INF/services/javax.sound.midi.spi.MidiFileReader
+javax/xml
+META-INF/services/javax.sound.midi.spi.MidiDeviceProvider
+META-INF/services/javax.sound.sampled.spi.FormatConversionProvider
+com/sun/xml/
+sun/print
+META-INF/services/sun.java2d.pipe.RenderingEngine
+META-INF/services/javax.sound.sampled.spi.AudioFileReader
+com/sun/java/swing/
+META-INF/services/javax.print.StreamPrintServiceFactory
+com/sun/java/util/jar/pack/
+META-INF/services/javax.sound.sampled.spi.MixerProvider
+com/sun/jndi/
+META-INF/services/javax.print.PrintServiceLookup
+META-INF/services/sun.java2d.cmm.PCMM
+com/sun/corba/
+java/lang
+com/sun/org/
+com/sun/imageio/
+! rt.jar
+com/sun/java/browser/
+com/sun/activation/
+sunw/util/
+com/ibm/
+com/sun/nio/
+java/
+org/omg/
+com/sun/accessibility/
+com/sun/rmi/
+com/sun/naming/
+com/sun/rowset/
+javax/
+com/sun/demo/
+com/sun/tracing/
+com/sun/security/
+com/sun/swing/
+com/sun/awt/
+sun/
+com/oracle/
+com/sun/net/
+sunw/io/
+com/sun/image/
+com/sun/xml/
+com/sun/jmx/
+com/sun/java/swing/
+ibm/tools/
+com/sun/java/util/jar/pack/
+com/sun/jndi/
+org/apache/
+com/sun/corba/
+com/sun/management/
+com/sun/media/
+com/sun/org/
+com/sun/beans/
+com/sun/istack/
+com/sun/imageio/
+# xml.jar
+org/xml/
+org/w3c/
+org/apache/
+com/sun/xml/
+com/ibm/
+com/sun/org/
+javax/xml
+! xmldsigfw.jar
+javax/xml

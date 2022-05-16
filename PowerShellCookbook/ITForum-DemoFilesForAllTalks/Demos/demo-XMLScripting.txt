@@ -1,0 +1,17 @@
+# WORKING WITH XML
+ii r_and_j.xml
+# XML is a native datatype in PowerShell
+$S = [XML](cat r_and_j.xml)
+$s
+$s.Play
+# PowerShell allows you to access the DataModel of XML
+$s.Play.Act[0].Scene[1]
+$s.Play.Act[0].Scene[1].Speech
+# You can leverage all of PowerShell's utilities against xml
+$s.Play.Act[0].Scene[1].speech |where {$_.speaker -eq "Romeo"} |sort line
+$x = $s.Play |Select -Expand Act|Select -Expand Scene |Select -Expand Speech
+$x[0..4]
+$x |group Speaker |sort count
+# Of course you can still treat it like XML and do things like
+# XPATH queries to find out what Lines Lady Montague has
+#$s.SelectNodes("//SPEECH[SPEAKER='LADY MONTAGUE']/LINE")

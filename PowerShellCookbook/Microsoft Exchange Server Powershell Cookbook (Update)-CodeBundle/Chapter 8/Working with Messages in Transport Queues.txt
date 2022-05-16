@@ -1,0 +1,97 @@
+Example 1:
+
+Get-Queue -Server tlex01
+
+
+Example 2:
+
+Get-TransportService | Get-Queue
+
+
+Example 3:
+
+Get-TransportService | 
+  Get-Queue -Filter {DeliveryType -eq 'DnsConnectorDelivery'}
+
+  
+Example 4:
+
+Get-Queue -Server tlex01 -Filter {MessageCount -gt 25}
+
+
+Example 5:
+
+Get-Queue -Server tlex01 -Filter {Status -eq 'Retry'}
+
+
+Example 6:
+
+Get-TransportService | 
+  Get-Queue -Filter {Status -eq 'Retry'} | 
+      Get-Message
+
+	  
+Example 7:
+
+Get-TransportService | 
+  Get-Message -Filter {FromAddress -like '*contoso.com'}
+
+  
+Example 8:
+
+Get-Message -Server tlex01 -Filter {Subject -eq 'test'} | Format-List
+
+
+Example 9:
+
+Get-Message -Server tlex01 -Filter {Subject -eq 'test'} | 
+  Suspend-Message -Confirm:$false
+
+
+Example 10:
+
+Get-Queue -Identity tlex01\7 | 
+  Get-Message | 
+      Suspend-Message -Confirm:$false
+
+	  
+Example 11:
+
+Get-Message -Server tlex01 -Filter {Subject -eq 'test'} | 
+  Resume-Message
+
+  
+Example 12:
+
+Get-Queue -Identity tlex01\7 | 
+  Get-Message | 
+      Resume-Message
+
+	  
+Example 13:
+
+Get-Queue -Identity tlex01\7 | Retry-Queue
+
+
+Example 14:
+
+Get-TransportService | 
+  Get-Queue -Filter {Status -eq 'Retry'} | 
+      Retry-Queue -Resubmit $true
+
+	  
+Example 15:
+
+Retry-Queue -Identity tlex01\Unreachable -Resubmit $true
+
+
+Example 16:
+
+Get-TransportService | 
+  Get-Queue -Filter {DeliveryType -eq 'DnsConnectorDelivery'} | 
+      Get-Message | Remove-Message -Confirm:$false
+
+	  
+Example 17:
+
+Remove-Message -Identity tlex01\10\13 -WithNDR $false -Confirm:$false

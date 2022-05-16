@@ -1,0 +1,116 @@
+Example 1:
+
+Set-OwaVirtualDirectory -Identity 'CAS1\owa (Default Web Site)' `
+-ExternalUrl https://mail.contoso.com/owa
+
+
+Example 2:
+
+Set-EcpVirtualDirectory -Identity 'CAS1\ecp (Default Web Site)' `
+-ExternalUrl https://mail.contoso.com/ecp
+
+
+Example 3:
+
+Get-EcpVirtualDirectory -Server cas1 | 
+  Set-EcpVirtualDirectory -ExternalUrl https://mail.contoso.com/ecp
+
+  
+Example 4:
+
+Set-ClientAccessServer -Identity cas1 `
+-AutoDiscoverServiceInternalUri `
+https://mail.contoso.com/Autodiscover/Autodiscover.xml
+
+
+Example 5:
+
+Set-OABVirtualDirectory -Identity "cas1\oab (Default Web Site)" `
+-ExternalUrl https://mail.contoso.com/oab
+
+
+Example 6:
+
+Set-ActivesyncVirtualDirectory -Identity `
+"cas1\Microsoft-Server-ActiveSync (Default Web Site)" `
+-ExternalURL https://mail.contoso.com/Microsoft-Server-Activesync
+
+
+Example 7:
+
+Set-WebServicesVirtualDirectory -Identity `
+"cas1\EWS (Default Web Site)" `
+-ExternalUrl https://mail.contoso.com/ews/exchange.asmx
+
+
+Example 8:
+
+$configData = @{
+    AllNodes = @(
+		@{
+            NodeName        = '*'
+            CertificateFile = 'C:\publickey.cer' 
+            Thumbprint      = 'C79FA4F12DBE0C5F88522AA49DF86EB410B23A71' 
+        }
+
+        @{
+            NodeName = 'tlex01.testlabs.se'
+            CASID    = 'Site1CAS'
+        }
+    );
+
+	Site1CAS = @(
+        @{
+            InternalNLBFqdn            = 'mail.contoso.com'
+            ExternalNLBFqdn            = 'mail.contoso.com'
+            AutoDiscoverSiteScope      = 'Default-First-Site-Name'
+            OABsToDistribute           = 'Default Offline Address Book'
+        }
+    );
+}
+
+
+Configuration ConfigureVirtualDirectories
+{
+    param
+    (
+        [PSCredential]$ShellCreds
+    )
+
+    Import-DscResource -Module xExchange
+
+    Node $AllNodes.NodeName
+    {
+        $casSettings = $ConfigurationData[$Node.CASId]
+
+        #Thumbprint of the certificate used to decrypt credentials on the target node
+        LocalConfigurationManager
+        {
+            CertificateId = $Node.Thumbprint
+        }
+
+        xExchOwaVirtualDirectory OWAVdir
+        {
+            Identity                              = "$($Node.NodeName)\owa (Default Web Site)"
+            Credential                            = $ShellCreds
+            BasicAuthentication                   = $true
+            ExternalAuthenticationMethods         = 'Fba'
+            ExternalUrl                           = "https://$($casSettings.ExternalNLBFqdn)/owa"
+            FormsAuthentication                   = $true
+            InternalUrl                           = "https://$($casSettings.InternalNLBFqdn)/owa"    
+            WindowsAuthentication                 = $false
+            AllowServiceRestart                   = $true
+        }
+    }
+}
+
+if ($ShellCreds -eq $null)
+{
+    $ShellCreds = Get-Credential -Message 'Enter credentials for establishing Remote Powershell sessions to Exchange'
+}
+
+ConfigureVirtualDirectories -ConfigurationData $configData -ShellCreds $ShellCreds
+
+Set-DscLocalConfigurationManager -Path .\ConfigureVirtualDirectories -Verbose
+
+Start-DscConfiguration -Path .\ConfigureVirtualDirectories -Verbose -Wait -Force

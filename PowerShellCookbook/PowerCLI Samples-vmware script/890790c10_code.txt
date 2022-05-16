@@ -1,0 +1,426 @@
+#########################
+#### Backup Script ######
+#########################
+
+Function Write-Log ($text) {
+ $LogTime = (Get-Date).DateTime
+ Write-Host "$($LogTime): $Text"
+}
+
+function Backup-VM{ 
+ <#
+ .SYNOPSIS
+ Imports a csv file of folders into vCenter Server and
+ creates them automatically.
+ .DESCRIPTION
+ The function will import folders from CSV file and create
+ them in vCenter Server.
+ .NOTES
+  Source:  Automating vSphere Administration
+  Authors: Luc Dekens, Arnim van Lieshout, Jonathan Medd,
+           Alan Renouf, Glenn Sizemore
+  Original: Adjusted from simonlong.co.uk
+  Note: This script is not meant for use with RDM or independent disks.
+ .PARAMETER FolderType
+ The type of folder to create
+ .PARAMETER DC
+ The Datacenter to create the folder structure
+ .PARAMETER Filename
+ The path of the CSV file to use when importing
+ .EXAMPLE 1
+ PS> Import-Folders -FolderType "Blue" -DC "DC01" -Filename "C:\BlueFolders.csv"
+ .EXAMPLE 2
+ PS> Import-Folders -FolderType "Yellow" -DC "Datacenter" 
+ -Filename "C:\YellowFolders.csv"
+ #>
+
+ param( 
+  $VM,
+  $Datastore
+ ) 
+
+ process{ 
+ #Set Date format for clone names
+ $date = Get-Date -Format "yyyyMMdd"
+
+ #Set Date format for emails
+ $time = (Get-Date -f "HH:MM")
+
+ foreach ($CurrentVM in $VM) {
+
+  Write-Log "$($CurrentVM.Name) Backing up"
+  Write-Log "$($CurrentVM.Name) Creating Snapshot"
+  # Create new snapshot for clone
+  $cloneSnap = $CurrentVM | New-Snapshot -Name "Snapshot created on $Date by backup script"
+
+  # Get managed object view
+  $vmView = $CurrentVM | Get-View
+
+  # Get folder managed object reference
+  $cloneFolder = $vmView.parent
+
+  $CloneVM = "$CurrentVM-$date"
+
+  Write-Log "$($CurrentVM.Name) Cloning from snapshot to $CloneVM"
+  # Build clone specification
+  $cloneSpec = new-object Vmware.Vim.VirtualMachineCloneSpec
+  $cloneSpec.Snapshot = $vmView.Snapshot.CurrentSnapshot
+
+  # Make linked disk specification
+  $cloneSpec.Location = new-object Vmware.Vim.VirtualMachineRelocateSpec
+  $cloneSpec.Location.Datastore = ($Datastore | Get-View).MoRef
+  $cloneSpec.Location.Transform =  [Vmware.Vim.VirtualMachineRelocateTransformation]::flat
+
+  # Create clone
+  $CreateClone = $vmView.CloneVM( $cloneFolder, $CloneVM, $cloneSpec )
+
+  Write-Log "$($CurrentVM.Name) Clone created"
+
+  Write-Log "$($CurrentVM.Name) Removing Snapshot"
+  # Remove Snapshot created for clone
+  Get-Snapshot -VM (Get-VM -Name $CurrentVM) -Name $cloneSnap | Remove-Snapshot -confirm:$False
+  Write-Log "$($CurrentVM.Name) Backup completed"
+  }
+ }
+}
+
+Backup-VM -VM (Get-VM DOMAIN01) -Datastore (Get-Datastore "VBlock Storage #1")
+
+#########################
+#### Listing CBT  #######
+#########################
+
+New-VIProperty -Name ToolsVersion -ObjectType VirtualMachine `
+ -ValueFromExtensionProperty ‘config.tools.ToolsVersion’ `
+ -Force
+	
+New-VIProperty -Name CBTEnabled -ObjectType VirtualMachine `
+ -ValueFromExtensionProperty ‘Config.ChangeTrackingEnabled’ `
+ -Force
+
+Get-VM VM01 | Select Name, Version, ToolsVersion, CBTEnabled
+
+#########################
+## Enable/Disable CBT ###
+#########################
+
+function Set-CBT{ 
+<#
+.SYNOPSIS
+ Enables and Disables CBT for a VM or multiple VMs
+.DESCRIPTION
+  The function will enables and disable CBT for a VM 
+  or multiple VMs
+.NOTES
+  Authors:  Luc Dekens & Alan Renouf
+.PARAMETER VM
+  A virtual machine or multiple virtual machines
+.PARAMETER Enabled
+  Specify if CBT shoud be enabled with $true
+  or disabled with $false
+  
+.EXAMPLE 1
+  PS> Set-CBT -VM (Get-VM VM01) -Enabled $true
+.EXAMPLE 2
+  PS> Set-CBT -VM (Get-VM VM*) -Enabled $false
+#>
+
+ param( 
+  $VM, 
+  [String]$Enabled
+ ) 
+
+ process{ 
+  $VM | Foreach {
+   $vmView = $_ | Get-View
+   $vmConfigSpec = New-Object VMware.Vim.VirtualMachineConfigSpec
+   if ($Enabled -eq $true) {
+    Write-Host "Enabling CBT for $($_.Name)"
+    $vmConfigSpec.changeTrackingEnabled = $true
+   } Else {
+    Write-Host "Disabling CBT for $($_.Name)"
+    $vmConfigSpec.changeTrackingEnabled = $false
+   }
+   $vmView.ReconfigVM($vmConfigSpec)
+  }
+  New-VIProperty -Name CBTEnabled -ObjectType VirtualMachine `
+  -ValueFromExtensionProperty ‘Config.ChangeTrackingEnabled’ `
+  -Force	
+  Get-VM $VM | Select Name, CBTEnabled
+ } 
+}
+
+Set-CBT -VM (Get-VM PRINT*) -Enabled $false
+
+#########################
+#### SRM Functions ######
+#########################
+Function Connect-SRMServer {
+ <#
+   .SYNOPSIS
+  Connects to a SRM server using the custom WSDL file
+  .DESCRIPTION
+  The function will connect to a SRM Server
+  .NOTES
+  Source:  Automating vSphere Administration
+  Authors: Luc Dekens, Arnim van Lieshout, Jonathan Medd,
+  Alan Renouf, Glenn Sizemore
+  Original: Adjusted from code.msdn.microsoft.com/PSVMSrm
+  .PARAMETER Server
+  The Server where SRM is installed
+  .PARAMETER Username
+  The username to use when connecting
+  .PARAMETER Password
+  The password to use when connecting
+  .EXAMPLE 1
+  PS> Connect-SRMServer -server 10.64.201.47 -username Administrator -Password P@$$
+ #>
+ Param ($Server,$UserName,$Password)
+ 
+ Process {
+  [System.Net.ServicePointManager]::ServerCertificateValidationCallback = {$true}
+     $a = New-WebServiceProxy ("http://" + $Server + ":9008/srm1.wsdl") -Namespace SRM
+     $srm = New-Object SRM.SrmBinding
+     $Url = "Https://" + $Server + ":9007"
+     $srm.url = $Url
+     $srm.CookieContainer = New-Object System.Net.CookieContainer 
+     $SrmObject = new-object system.object
+     $SRMObject | Add-Member -Type NoteProperty -value $SRM -Name SRMService
+
+     $mof = New-Object SRM.ManagedObjectReference
+     $mof.type = "SrmServiceInstance"
+     $mof.value = $mof.type 
+
+     $context = ($srm.RetrieveContent($mof)).srmApi
+     $srm.SrmLogin($context, $UserName, $Password)
+     $SRMObject | Add-Member -Type NoteProperty -value $Context -Name SRMContext
+    
+     If ($SrmObject) {
+                     Write-Host -ForegroundColor Yellow "PowerSRM connected to $server"
+     } Else {
+                     Write-Host -BackgroundColor Red "PowerSRM: Unable to connect to $server"
+     }
+    
+     $global:DefaultSRMServer = $SRMObject
+ }
+}
+Function Disconnect-SRMServer {
+ <#
+   .SYNOPSIS
+  Disconnects from a connected SRM server
+  .DESCRIPTION
+  The function will disconnect from an SRM Server
+  .NOTES
+  Source:  Automating vSphere Administration
+  Authors: Luc Dekens, Arnim van Lieshout, Jonathan Medd,
+  Alan Renouf, Glenn Sizemore
+  Original: Adjusted from code.msdn.microsoft.com/PSVMSrm
+  .EXAMPLE 1
+  PS> Disconnect-SRMServer
+ #>
+ $DefaultSRMServer.SRMService.SRMLogout($DefaultSRMServer.SRMContext)
+    write-host "SRM Logged Out"
+}
+Function Get-SRMRecoveryPlan {
+ <#
+   .SYNOPSIS
+  Retrieves a list of all SRM Plans
+  .DESCRIPTION
+  The function will list all SRM Plans
+  .NOTES
+  Source:  Automating vSphere Administration
+  Authors: Luc Dekens, Arnim van Lieshout, Jonathan Medd,
+  Alan Renouf, Glenn Sizemore
+  Original: Adjusted from code.msdn.microsoft.com/PSVMSrm
+  .EXAMPLE 1
+  PS> Get-SRMRecoveryPlan
+ #>
+ $PlanObject = @()
+  $DefaultSRMServer.SRMService.ListRecoveryPlans($DefaultSRMServer.SRMContext) | Foreach {
+   $Plan = $DefaultSRMServer.SRMService.RecoveryPlanSettings($DefaultSRMServer.SRMContext,$_)
+   $Plans = New-Object PSObject
+   $Plans | Add-Member -Name Name -Value $Plan.Name -MemberType NoteProperty
+   $Plans | Add-Member -Name Description -Value $Plan.Description -MemberType NoteProperty
+   $Plans | Add-Member -Name State -Value $Plan.State -MemberType NoteProperty
+   $PlanObject += $Plans
+  }
+  Return $PlanObject
+}
+Function Invoke-SRMRecoveryPlan {
+ <#
+   .SYNOPSIS
+  Invokes a recovery plan
+  .DESCRIPTION
+  The function will invoke a recovery plan for failover
+  Urgent: This is not a test !
+  .NOTES
+  Source:  Automating vSphere Administration
+  Authors: Luc Dekens, Arnim van Lieshout, Jonathan Medd,
+  Alan Renouf, Glenn Sizemore
+  Original: Adjusted from code.msdn.microsoft.com/PSVMSrm
+  .PARAMETER PlanName
+  The name of the Recovery Plan
+  .EXAMPLE 1
+  PS> $Plan = Get-SRMRevoeryPlan | Select -First 1
+  Invoke-SRMRecoveryPlan $Plan.Name -confirm:False
+ #>
+ [CmdletBinding( SupportsShouldProcess=$true, ConfirmImpact='High')]
+  param(
+   $PlanName
+  )
+  If ($pscmdlet.ShouldProcess($PlanName, "Are you sure you wish to invoke an SRM failover ?")) {
+   $DefaultSRMServer.SRMService.RecoveryPlanStart($DefaultSRMServer.SRMContext,$PlanName,"Recovery")
+   write-host "Plan: $PlanName Invoked"
+  } Else {
+  Write-Host "Plan: $PlanName Not Invoked, Canceled by user"
+ }
+}
+Function Test-SRMRecoveryPlan {
+ <#
+   .SYNOPSIS
+  Test a recovery plan
+  .DESCRIPTION
+  The function will test a recovery plan for failover
+  .NOTES
+  Source:  Automating vSphere Administration
+  Authors: Luc Dekens, Arnim van Lieshout, Jonathan Medd,
+  Alan Renouf, Glenn Sizemore
+  Original: Adjusted from code.msdn.microsoft.com/PSVMSrm
+  .PARAMETER PlanName
+  The name of the Recovery Plan
+  .EXAMPLE 1
+  PS> $Plan = Get-SRMRevoeryPlan | Select -First 1
+  Test-SRMRecoveryPlan $Plan.Name -confirm:False
+ #>
+ [CmdletBinding( SupportsShouldProcess=$true, ConfirmImpact='High')]
+  param(
+   $PlanName
+  )
+  If ($pscmdlet.ShouldProcess($PlanName, "Are you sure you wish to invoke a SRM failover test ?")) {
+   $DefaultSRMServer.SRMService.RecoveryPlanStart($DefaultSRMServer.SRMContext,$PlanName,"Test")
+   write-host "Plan: $PlanName Invoked In Test Mode"
+  } Else {
+   Write-Host "Plan: $PlanName Not Invoked, Canceled by user"
+  }
+}
+Function Suspend-SRMRecoveryPlan($PlanName) {
+ <#
+   .SYNOPSIS
+  Suspends a Recovery Plan
+  .DESCRIPTION
+  The function will suspend a recovery plan
+  .NOTES
+  Source:  Automating vSphere Administration
+  Authors: Luc Dekens, Arnim van Lieshout, Jonathan Medd,
+  Alan Renouf, Glenn Sizemore
+  Original: Adjusted from code.msdn.microsoft.com/PSVMSrm
+  .PARAMETER PlanName
+  The name of the Recovery Plan
+  .EXAMPLE 1
+  PS> $Plan = Get-SRMRevoeryPlan | Select -First 1
+  Suspend-SRMRecoveryPlan $Plan.Name
+ #>
+ $DefaultSRMServer.SRMService.RecoveryPlanPause($DefaultSRMServer.SRMContext,$PlanName)
+ write-host "Plan: $PlanName Paused"
+}
+Function Exit-SRMRecoveryPlan($PlanName) {
+ <#
+   .SYNOPSIS
+  Exits a Recovery Plan
+  .DESCRIPTION
+  The function will Exit a recovery plan
+  .NOTES
+  Source:  Automating vSphere Administration
+  Authors: Luc Dekens, Arnim van Lieshout, Jonathan Medd,
+  Alan Renouf, Glenn Sizemore
+  Original: Adjusted from code.msdn.microsoft.com/PSVMSrm
+  .PARAMETER PlanName
+  The name of the Recovery Plan
+  .EXAMPLE 1
+  PS> $Plan = Get-SRMRevoeryPlan | Select -First 1
+  Exit-SRMRecoveryPlan $Plan.Name
+ #>
+ $DefaultSRMServer.SRMService.RecoveryPlanCancel($DefaultSRMServer.SRMContext,$PlanName)
+  write-host "Plan: $PlanName Cancelled"
+}
+Function Resume-SRMRecoveryPlan($PlanName) {
+ <#
+   .SYNOPSIS
+  Resumes a suspended Recovery Plan
+  .DESCRIPTION
+  The function will resume a recovery plan
+  .NOTES
+  Source:  Automating vSphere Administration
+  Authors: Luc Dekens, Arnim van Lieshout, Jonathan Medd,
+  Alan Renouf, Glenn Sizemore
+  Original: Adjusted from code.msdn.microsoft.com/PSVMSrm
+  .PARAMETER PlanName
+  The name of the Recovery Plan
+  .EXAMPLE 1
+  PS> $Plan = Get-SRMRevoeryPlan | Select -First 1
+  Resume-SRMRecoveryPlan $Plan.Name
+ #>    
+ $DefaultSRMServer.SRMService.RecoveryPlanStart($DefaultSRMServer.SRMContext,$PlanName)
+ write-host "Plan: $PlanName Resumed"
+}
+Function Get-SRMPlanStatus($PlanName) {
+ <#
+   .SYNOPSIS
+  Gets the status of a Recovery Plan
+  .DESCRIPTION
+  The function will retrieve the status of a recovery plan
+  .NOTES
+  Source:  Automating vSphere Administration
+  Authors: Luc Dekens, Arnim van Lieshout, Jonathan Medd,
+  Alan Renouf, Glenn Sizemore
+  Original: Adjusted from code.msdn.microsoft.com/PSVMSrm
+  .PARAMETER PlanName
+  The name of the Recovery Plan
+  .EXAMPLE 1
+  PS> $Plan = Get-SRMRevoeryPlan | Select -First 1
+  Get-SRMPlanStatus $Plan.Name
+ #>    
+ $Response = $DefaultSRMServer.SRMService.RecoveryPlanSettings($DefaultSRMServer.SRMContext,$PlanName)
+ $Final = $Response.State.toString()
+ Return $Final
+}
+Function Approve-SRMPlanPrompt($PlanName) {
+ <#
+   .SYNOPSIS
+  Approves a prompt during a plan
+  .DESCRIPTION
+  The function will a prompt in a recovery plan
+  .NOTES
+  Source:  Automating vSphere Administration
+  Authors: Luc Dekens, Arnim van Lieshout, Jonathan Medd,
+  Alan Renouf, Glenn Sizemore
+  Original: Adjusted from code.msdn.microsoft.com/PSVMSrm
+  .PARAMETER PlanName
+  The name of the Recovery Plan
+  .EXAMPLE 1
+  PS> $Plan = Get-SRMRevoeryPlan | Select -First 1
+  Approve-SRMPlanPrompt $Plan.Name
+ #>
+ $DefaultSRMServer.SRMService.RecoveryPlanAnswerPrompt($DefaultSRMServer.SRMContext,$PlanName)
+ write-host "Answered"
+}
+Function Get-SRMPlanFinalResponse($PlanName) {
+ <#
+   .SYNOPSIS
+  Retrieves the final plan response
+  .DESCRIPTION
+  The function will retrieve the final response of a recovery plan
+  .NOTES
+  Source:  Automating vSphere Administration
+  Authors: Luc Dekens, Arnim van Lieshout, Jonathan Medd,
+  Alan Renouf, Glenn Sizemore
+  Original: Adjusted from code.msdn.microsoft.com/PSVMSrm
+  .PARAMETER PlanName
+  The name of the Recovery Plan
+  .EXAMPLE 1
+  PS> $Plan = Get-SRMRevoeryPlan | Select -First 1
+  Get-SRMPlanFinalResponse $Plan.Name
+ #>
+ [xml]$Response = $DefaultSRMServer.SRMService.GetFinalStatus($DefaultSRMServer.SRMcontext,$PlanName,0,999999)
+ Return $Response
+}

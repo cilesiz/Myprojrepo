@@ -1,0 +1,15 @@
+Example 1:
+
+foreach ($mailbox in Get-Mailbox) {$mailbox.Name}
+
+Get-Mailbox | ForEach-Object {$_.Name}
+
+Get-Mailbox | %{$_.Name}
+
+Example 2:
+
+Get-MailboxDatabase -Status | %{
+  $DBName = $_.Name
+  $whiteSpace = $_.AvailableNewMailboxSpace.ToMB()
+  "The $DBName database has $whiteSpace MB of total white space"
+}

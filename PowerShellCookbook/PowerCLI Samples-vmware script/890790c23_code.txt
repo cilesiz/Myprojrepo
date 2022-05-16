@@ -1,0 +1,494 @@
+################################################################
+# Listing 23.1: Empty default modal form
+################################################################
+[reflection.assembly]::loadwithpartialname("System.Windows.Forms") | Out-Null
+$MyForm = New-Object System.Windows.Forms.Form
+$MyForm.ShowDialog()| Out-Null
+
+################################################################
+#Listing 23.2: Empty default modeless form
+################################################################
+[reflection.assembly]::loadwithpartialname("System.Windows.Forms") | Out-Null
+$MyForm = New-Object System.Windows.Forms.Form
+$MyForm.Show ()| Out-Null
+Sleep 5
+$MyForm
+
+################################################################
+#Listing 23.3: Empty default form run from the application
+################################################################
+[reflection.assembly]::loadwithpartialname("System.Windows.Forms") | Out-Null
+$MyForm = New-Object System.Windows.Forms.Form
+[System.Windows.Forms.Application]::Run($MyForm)
+
+################################################################
+#Listing 23.4: Default form with a button
+################################################################
+[reflection.assembly]::loadwithpartialname("System.Windows.Forms") | Out-Null
+$MyForm = New-Object System.Windows.Forms.Form
+$Button = New-Object System.Windows.Forms.Button
+$Button.Text = "MyButton"
+$MyForm.Controls.Add($Button)
+[System.Windows.Forms.Application]::Run($MyForm)
+
+################################################################
+#Listing 23.5: Sized form with a positioned and sized button
+################################################################
+[reflection.assembly]::loadwithpartialname("System.Windows.Forms") | Out-Null
+$MyForm = New-Object System.Windows.Forms.Form
+$MyForm.ClientSize = New-Object System.Drawing.Size(240, 190)
+$MyForm.Text = "My Form"
+$Button = New-Object System.Windows.Forms.Button
+$Button.Location = New-Object System.Drawing.Point(80, 80)
+$Button.Size = New-Object System.Drawing.Size(80, 30)
+$Button.Text = "MyButton"
+$MyForm.Controls.Add($Button)
+[System.Windows.Forms.Application]::Run($MyForm)
+
+################################################################
+# Listing 23.6: Form with event handler
+################################################################
+[reflection.assembly]::loadwithpartialname("System.Windows.Forms") | Out-Null
+function Button_Clicked($object){
+  $MyForm.close()
+}
+$MyForm = New-Object System.Windows.Forms.Form
+$MyForm.ClientSize = New-Object System.Drawing.Size(240, 190)
+$MyForm.Text = "My Form"
+$Button = New-Object System.Windows.Forms.Button
+$Button.Location = New-Object System.Drawing.Point(80, 80)
+$Button.Size = New-Object System.Drawing.Size(80, 30)
+$Button.Text = "MyButton"
+$Button.add_Click({Button_Clicked($Button)})
+$MyForm.Controls.Add($Button)
+[System.Windows.Forms.Application]::Run($MyForm)
+
+################################################################
+#Listing 23.7: Select guests from a listbox
+################################################################
+[reflection.assembly]::loadwithpartialname("System.Windows.Forms") | Out-Null
+[reflection.assembly]::loadwithpartialname("System.Drawing") | Out-Null
+
+function Button_Clicked($object){
+  $MyForm.close()
+}
+
+$MyForm = New-Object System.Windows.Forms.Form
+$MyForm.Text = "Guest selection"
+
+$Button = New-Object System.Windows.Forms.Button
+$Button.Location = New-Object System.Drawing.Point(107, 205)
+$Button.Size = New-Object System.Drawing.Size(78, 22)
+$Button.Text = "OK"
+$Button.add_Click({Button_Clicked($Button)})
+
+$ListBox = New-Object System.Windows.Forms.ListBox
+$ListBox.Location = New-Object System.Drawing.Point(42, 43)
+$ListBox.Size = New-Object System.Drawing.Size(198, 17)
+$ListBox.SelectionMode = [System.Windows.Forms.SelectionMode]::MultiSimple
+$ListBox.Sorted = $true
+
+$MyForm.Controls.Add($Button)
+$MyForm.Controls.Add($ListBox)
+
+# Populate the listbox with the names of the guests
+Get-VM | %{
+  $ListBox.Items.Add($_.Name) | Out-Null
+}
+
+[System.Windows.Forms.Application]::Run($MyForm)
+
+# Display the selected guest(s)
+[Windows.Forms.MessageBox]::Show(
+  [string]::Join("`n",$ListBox.SelectedItems),
+  "You selected",
+  [Windows.Forms.MessageBoxButtons]::OK,
+  [System.Windows.Forms.MessageBoxIcon]::Information
+)
+
+################################################################
+#Listing 23.8: Select guests and templates from a listbox
+################################################################
+[reflection.assembly]::loadwithpartialname("System.Windows.Forms") | Out-Null
+[reflection.assembly]::loadwithpartialname("System.Drawing") | Out-Null
+
+function Button_Clicked($object){
+  $MyForm.close()
+}
+
+function CheckBox-Changed($object){
+  $ListBox.Items.Clear()
+
+  if($CheckBox.Checked){
+    Get-VM | %{
+      $ListBox.Items.Add($_.Name) | Out-Null
+    }  
+    Get-Template | %{
+      $ListBox.Items.Add($_.Name) | Out-Null
+    }  
+  }
+  else{
+    Get-VM | %{
+      $ListBox.Items.Add($_.Name) | Out-Null
+    }
+  }
+}
+
+$MyForm = New-Object System.Windows.Forms.Form
+$MyForm.Text = "Guest selection"
+
+$Button = New-Object System.Windows.Forms.Button
+$Button.Location = New-Object System.Drawing.Point(107, 205)
+$Button.Size = New-Object System.Drawing.Size(78, 22)
+$Button.Text = "OK"
+$Button.add_Click({Button_Clicked($Button)})
+
+$ListBox = New-Object System.Windows.Forms.ListBox
+$ListBox.Location = New-Object System.Drawing.Point(44, 22)
+$ListBox.Size = New-Object System.Drawing.Size(198, 134)
+$ListBox.SelectionMode = [System.Windows.Forms.SelectionMode]::MultiSimple
+$ListBox.Sorted = $true
+
+$CheckBox = New-Object System.Windows.Forms.CheckBox
+$CheckBox.Location = New-Object System.Drawing.Point(44, 162)
+$CheckBox.Size = New-Object System.Drawing.Size(141, 24)
+$CheckBox.Text = "Include Templates"
+$CheckBox.add_CheckedChanged({CheckBox-Changed($CheckBox)})
+
+$MyForm.Controls.Add($Button)
+$MyForm.Controls.Add($ListBox)
+$MyForm.Controls.Add($CheckBox)
+
+# Populate the listbox with the names of the guests
+Get-VM | %{
+  $ListBox.Items.Add($_.Name) | Out-Null
+}
+
+[System.Windows.Forms.Application]::Run($MyForm)
+
+# Display the selected guest(s)
+[Windows.Forms.MessageBox]::Show(
+  [string]::Join("`n",$ListBox.SelectedItems),
+  "You selected",
+  [Windows.Forms.MessageBoxButtons]::OK,
+  [System.Windows.Forms.MessageBoxIcon]::Information
+)
+
+################################################################
+# Listing 23.9: Select guests or templates  from a listbox
+################################################################
+[reflection.assembly]::loadwithpartialname("System.Windows.Forms") | Out-Null
+[reflection.assembly]::loadwithpartialname("System.Drawing") | Out-Null
+
+function Button_Clicked($object){
+  $MyForm.close()
+}
+
+function RadioButton-Changed($object){
+  $ListBox.Items.Clear()
+
+  if($GuestsButton.Checked){
+    Get-VM | %{
+      $ListBox.Items.Add($_.Name) | Out-Null
+    }
+  } 
+  else{
+    Get-Template | %{
+      $_.Name
+      $ListBox.Items.Add($_.Name) | Out-Null
+    } 
+  }
+}
+
+$MyForm = New-Object System.Windows.Forms.Form
+$MyForm.Text = "Guest selection"
+
+$Button = New-Object System.Windows.Forms.Button
+$Button.Location = New-Object System.Drawing.Point(107, 205)
+$Button.Size = New-Object System.Drawing.Size(78, 22)
+$Button.Text = "OK"
+$Button.add_Click({Button_Clicked($Button)})
+
+$ListBox = New-Object System.Windows.Forms.ListBox
+$ListBox.Location = New-Object System.Drawing.Point(44, 22)
+$ListBox.Size = New-Object System.Drawing.Size(198, 134)
+$ListBox.SelectionMode = [System.Windows.Forms.SelectionMode]::MultiSimple
+$ListBox.Sorted = $true
+
+$GroupBox = New-Object System.Windows.Forms.GroupBox
+$GroupBox.Location = New-Object System.Drawing.Point(42, 163)
+$GroupBox.Size = New-Object System.Drawing.Size(201, 36)
+$GroupBox.Text = ""
+
+$GuestsButton = New-Object System.Windows.Forms.RadioButton
+$GuestsButton.Location = New-Object System.Drawing.Point(7, 11)
+$GuestsButton.Size = New-Object System.Drawing.Size(79, 22)
+$GuestsButton.Checked = $true
+$GuestsButton.Text = "Guests"
+$GuestsButton.add_CheckedChanged({RadioButton-Changed($GuestsButton)})
+
+$TemplatesButton = New-Object System.Windows.Forms.RadioButton
+$TemplatesButton.Location = New-Object System.Drawing.Point(102, 9)
+$TemplatesButton.Size = New-Object System.Drawing.Size(94, 26)
+$TemplatesButton.Text = "Templates"
+
+$GroupBox.Controls.Add($TemplatesButton)
+$GroupBox.Controls.Add($GuestsButton)
+
+$MyForm.Controls.Add($Button)
+$MyForm.Controls.Add($ListBox)
+$MyForm.Controls.Add($GroupBox)
+
+# Populate the listbox with the names of the guests
+Get-VM | %{
+  $ListBox.Items.Add($_.Name) | Out-Null
+}
+
+[System.Windows.Forms.Application]::Run($MyForm)
+
+# Display the selected guest(s)
+[Windows.Forms.MessageBox]::Show(
+[string]::Join("`n",$ListBox.SelectedItems),
+"You selected",
+[Windows.Forms.MessageBoxButtons]::OK,
+[System.Windows.Forms.MessageBoxIcon]::Information
+)
+
+################################################################
+Listing 23.10: vSphere Event Logger
+################################################################
+#requires -pssnapin VMware.VimAutomation.Core -version 4.1
+
+#region Load assemblies
+$requiredAssemblies = "System.Windows.Forms","System.Drawing"
+$requiredAssemblies | %{
+  [void][System.Reflection.Assembly]::LoadWithPartialName($_)
+}
+#endregion
+
+#region Script-scope variables
+$DurationDefault = 5
+$PauseDefault = 5
+$Finish = $null
+$eCollector = $null
+$eData = New-Object System.Collections.ArrayList
+#endregion
+
+#region General functions
+function New-eCollector{
+  process{
+    $si = Get-View ServiceInstance
+    $eventMgr = Get-View $si.Content.EventManager
+    $filter = New-Object VMware.Vim.EventFilterSpec
+
+    $filter.disableFullMessage = $false
+    $filter.time = New-Object VMware.Vim.EventFilterSpecByTime
+    $filter.time.beginTime = Get-Date
+    $filter.time.endTime = $Finish
+
+    $script:eCollector = Get-View ($eventMgr.CreateCollectorForEvents($filter))
+  }
+}
+
+function Invoke-VIEventMonitor{
+  process{
+    Set-Variable -Name ViewSize -Value 100 -Option ReadOnly
+
+    $events = $script:eCollector.ReadNextEvents($ViewSize)
+    while($events){
+      $eventInfo = @($events | `
+        Select @{N="Time (UTC)";E={$_.CreatedTime.ToLongTimeString()}},
+          @{N="Type";E={$_.GetType().Name}},
+          @{N="Message";E={$_.FullFormattedMessage}})
+      $script:eData.AddRange($eventInfo)
+      $events = $script:eCollector.ReadNextEvents($ViewSize)
+      $ExportButton.Visible = $true
+    }
+    $script:EventGrid.DataSource = ""
+    $script:EventGrid.DataSource = $script:eData
+    $script:EventGrid.Refresh()
+    $script:StatusBar.Text = ((Get-Date -Format "HH:MM:ss") +`
+       "`tEvents : " + $script:eData.Count)
+    $script:EventMonitor.Refresh()
+  }
+}
+#endregion
+
+#region Event functions
+function EventMonitor-Load( $object ){
+  if($script:eCollector){
+    Invoke-VIEventMonitor
+  }
+}
+
+function Finished-Clicked( $object ){
+  $EventMonitor.Close()
+  if($eCollector){
+    $eCollector.DestroyCollector()
+  }
+}
+
+function Go-Clicked( $object ){
+  $Finish = (Get-Date).AddMinutes($DurationField.Value) 
+  New-eCollector
+  $PauseTimer.Enabled = $true
+  $EventGrid.Visible = $true
+}
+
+function Export-Clicked ( $object ){
+  $SelectExportFile.FileName = "Events" + (Get-Date -Format "yyyyMMdd-HHMMss")
+  $SelectExportFile.InitialDirectory = $env:userprofile
+  $SelectExportFile.ShowDialog()
+  $script:eData | `
+    Export-Csv -Path $SelectExportFile.FileName -NoTypeInformation `
+      -UseCulture -Force:$true
+}
+
+function Pause-Completed( $object ){
+  Invoke-VIEventMonitor
+}
+#endregion
+
+#region Form construction
+
+#region EventMonitor form
+$EventMonitor = New-Object System.Windows.Forms.Form
+$EventMonitor.ClientSize = New-Object System.Drawing.Size(401, 338)
+$EventMonitor.Text = "Event Monitor"
+$EventMonitor.FormBorderStyle = `
+  [System.Windows.Forms.FormBorderStyle]::FixedSingle
+$EventMonitor.add_Load({EventMonitor-Load($EventMonitor)})
+#endregion
+
+#region Duration value
+$DurationField = New-Object System.Windows.Forms.NumericUpDown
+$DurationField.Location = New-Object System.Drawing.Point(67, 18)
+$DurationField.Size = New-Object System.Drawing.Size(50, 20)
+$DurationField.Value = $DurationDefault
+$DurationField.TabIndex = 0
+#endregion
+
+#region Pause value
+$PauseField = New-Object System.Windows.Forms.NumericUpDown
+$PauseField.Location = New-Object System.Drawing.Point(67, 53)
+$PauseField.Size = New-Object System.Drawing.Size(50, 20)
+$PauseField.Value = $PauseDefault
+$PauseField.TabIndex = 1
+#endregion
+
+#region Go button
+$GoButton = New-Object System.Windows.Forms.Button
+$GoButton.Location = New-Object System.Drawing.Point(185, 13)
+$GoButton.Size = New-Object System.Drawing.Size(63, 26)
+$GoButton.TabIndex = 2
+$GoButton.Text = "Go"
+$GoButton.UseVisualStyleBackColor = $true
+$GoButton.add_Click({Go-Clicked($GoButton)})
+#endregion
+
+#region Export button
+$ExportButton = New-Object System.Windows.Forms.Button
+$ExportButton.Location = New-Object System.Drawing.Point(185, 48)
+$ExportButton.Size = New-Object System.Drawing.Size(63, 26)
+$ExportButton.TabIndex = 10
+$ExportButton.Text = "Export"
+$ExportButton.Visible = $false
+$ExportButton.UseVisualStyleBackColor = $true
+$ExportButton.add_Click({Export-Clicked($ExportButton)})
+#endregion
+
+#region Finish button
+$FinishButton = New-Object System.Windows.Forms.Button
+$FinishButton.Location = New-Object System.Drawing.Point(308, 13)
+$FinishButton.Size = New-Object System.Drawing.Size(63, 26)
+$FinishButton.TabIndex = 3
+$FinishButton.Text = "Finished"
+$FinishButton.UseVisualStyleBackColor = $true
+$FinishButton.add_Click({Finished-Clicked($FinishButton)})
+#endregion
+
+#region Datagrid
+$EventGrid = New-Object System.Windows.Forms.DataGridView
+$EventGrid.Location = New-Object System.Drawing.Point(22, 96)
+$EventGrid.Size = New-Object System.Drawing.Size(349, 193)
+$EventGrid.Visible = $false
+$EventGrid.AutoSizeColumnsMode = `
+  [System.Windows.Forms.DataGridViewAutoSizeColumnsMode]::AllCells
+$EventGrid.DataSource = $eBinding
+#endregion
+
+#region Statusbar
+$StatusBar = New-Object System.Windows.Forms.StatusBar
+$StatusBar.Dock = [System.Windows.Forms.DockStyle]::Bottom
+$StatusBar.Location = New-Object System.Drawing.Point(0, 316)
+$StatusBar.Size = New-Object System.Drawing.Size(401, 22)
+$StatusBar.Text = ""
+#endregion
+
+#region SelectExportFile
+$SelectExportFile = New-Object System.Windows.Forms.OpenFileDialog
+$SelectExportFile.DefaultExt = ".csv"
+$SelectExportFile.FileName = ""
+$SelectExportFile.Filter = "CSV files|*.csv"
+$SelectExportFile.ShowHelp = $true
+$SelectExportFile.CheckFileExists = $false
+#endregion
+
+#region Various labels
+$Label1 = New-Object System.Windows.Forms.Label
+$Label1.Location = New-Object System.Drawing.Point(19, 20)
+$Label1.Size = New-Object System.Drawing.Size(52, 14)
+# $Label1.TabIndex = 0
+$Label1.Text = "Duration"
+
+$Label2 = New-Object System.Windows.Forms.Label
+$Label2.Location = New-Object System.Drawing.Point(123, 20)
+$Label2.Size = New-Object System.Drawing.Size(46, 15)
+$Label2.Text = "minutes"
+
+$Label3 = New-Object System.Windows.Forms.Label
+$Label3.Location = New-Object System.Drawing.Point(19, 55)
+$Label3.Size = New-Object System.Drawing.Size(44, 14)
+$Label3.Text = "Pause"
+
+$Label4 = New-Object System.Windows.Forms.Label
+$Label4.Location = New-Object System.Drawing.Point(123, 55)
+$Label4.Size = New-Object System.Drawing.Size(46, 15)
+$Label4.Text = "seconds"
+#endregion
+
+#region Add controls to form
+$EventMonitor.Controls.Add($DurationField)
+$EventMonitor.Controls.Add($PauseField)
+$EventMonitor.Controls.Add($GoButton)
+$EventMonitor.Controls.Add($FinishButton)
+$EventMonitor.Controls.Add($ExportButton)
+$EventMonitor.Controls.Add($EventGrid)
+$EventMonitor.Controls.Add($StatusBar)
+$EventMonitor.Controls.Add($Label1)
+$EventMonitor.Controls.Add($Label2)
+$EventMonitor.Controls.Add($Label3)
+$EventMonitor.Controls.Add($Label4)
+#endregion
+
+#region Timer
+$components = New-Object System.ComponentModel.Container
+$PauseTimer = New-Object System.Windows.Forms.Timer($components)
+$PauseTimer.Interval = $PauseField.Value * 1000
+$PauseTimer.add_Tick({Pause-Completed($PauseTimer)})
+#endregion
+#endregion
+
+#region Initialisation
+if(!$defaultVIServer){
+  Write-Error "Please connect to a vCenter or ESX(i) server first"
+  exit
+}
+#endregion
+
+#region Run the form
+[System.Windows.Forms.Application]::EnableVisualStyles()
+[System.Windows.Forms.Application]::Run($EventMonitor)
+#endregion
+
+

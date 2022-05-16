@@ -1,0 +1,113 @@
+Listing 18.1 Create a PowerOff VM vCenter Scheduled Task
+
+$VMs = Get-View -ViewType VirtualMachine -Filter @{"Name" = "PrintServer*"}
+
+foreach($vm in $VMs){
+
+ $ma = New-Object VMware.Vim.MethodAction
+ $ma.Argument = $null
+ $ma.Name = "PowerOffVM_Task"
+ 
+ $dts = New-Object VMware.Vim.DailyTaskScheduler
+ $dts.Hour = 20
+ $dts.Minute = 0
+ $dts.Interval = 7
+ 
+ $spec = New-Object VMware.Vim.ScheduledTaskSpec
+ $spec.Name = "PowerOff " + $VM.name
+ $spec.Description = "PowerOff " + $VM.name
+ $spec.Enabled = $true
+ $spec.Notification = "monitoring@virtu-al.local"
+ $spec.Action = $ma
+ $spec.Scheduler = $dts 
+ 
+ $si = Get-View ServiceInstance
+ $stm = Get-View $si.Content.ScheduledTaskManager
+ $stm.CreateScheduledTask($vm.MoRef,$Spec)
+}
+
+
+Listing 18.2 Retrieve vCenter Scheduled Tasks
+
+function Get-vCenterScheduledTask{
+    <#
+    .SYNOPSIS
+        Retrieve vCenter Scheduled Tasks.
+    .DESCRIPTION
+        Retrieve vCenter Scheduled Tasks.
+    .NOTES
+        Source:  Automating vSphere Administration
+        Authors: Luc Dekens, Arnim van Lieshout, Jonathan Medd,
+                 Alan Renouf, Glenn Sizemore
+	.EXAMPLE
+        Get-vCenterScheduledTask | Select-Object Name,Description,NextRunTime,PrevRunTime,State,Notification
+    #> 
+ 
+    $si = Get-View ServiceInstance
+    $scheduledTaskManager = Get-View $si.Content.ScheduledTaskManager
+    $tasks = $scheduledTaskManager.RetrieveEntityScheduledTask($null)
+    $scheduledtasks = foreach ($task in $tasks){(Get-View $task).info}
+    $scheduledtasks
+
+}
+
+
+Listing 18.3 Create a Scheduled Task with schtasks.exe
+
+
+schtasks /create /tn "Copy Files" /tr C:\Scripts\CopyFiles.bat /sc daily /st 20:00 /ed 12/31/2010
+
+
+Listing 18.4 ESXiHostReport.ps1
+
+# Note: Adjust the name of your vCenter Server here
+Connect-VIServer virtuvc
+
+# Note: Change the location of the output from C:\Scripts if necessary
+$VMCount = @(Get-VM).count
+$VMHostCount = @(Get-VMHost).count
+$MyObject = New-Object PSObject -Property @{ vCenter = "$global:DefaultVIServer"; VMs = $VMCount; VMHosts = $vMHostCount}
+$MyObject | Export-Csv C:\Scripts\ESXiHostReport.csv -NoTypeInformation -UseCulture
+
+Disconnect-VIServer -Confirm:$false
+
+
+Listing 18.5 Run ESXiHostReport.ps1 from cmd.exe
+
+
+C:\WINDOWS\system32\windowspowershell\v1.0\powershell.exe -Command C:\Scripts\ESXiHostReport.ps1
+
+
+Listing 18.6 Run ESXiHostReport.ps1 with spaces in the path name from cmd.exe
+
+
+C:\WINDOWS\system32\windowspowershell\v1.0\powershell.exe -Command "& 'C:\My Scripts\ESXiHostReport.ps1'"
+
+
+Listing 18.7 Run ESXiHostReport.ps1 from cmd.exe using the -File parameter of PowerShell.exe
+
+
+C:\WINDOWS\system32\windowspowershell\v1.0\powershell.exe -File 'C:\My Scripts\ESXiHostReport.ps1'
+
+
+
+Listing 18.8 Run ESXiHostReport from cmd.exe using a console file
+
+
+C:\WINDOWS\system32\windowspowershell\v1.0\powershell.exe -PSConsoleFile “C:\Program Files\VMware\Infrastructure\vSphere PowerCLI\vim.psc1" -File C:\Scripts\ESXiHostReport.ps1
+
+
+
+Listing 18.9 Create a Scheduled Task with the Scheduled Tasks Module
+
+
+New-Task | Add-TaskTrigger -DayOfWeek Monday, Tuesday, Wednesday, Thursday, Friday -WeeksInterval 1 -At "8:00 PM" | Add-TaskAction -Path "C:\WINDOWS\system32\windowspowershell\v1.0\powershell.exe" -Arguments "-PSConsoleFile `"c:\Program Files\VMware\Infrastructure\vSphere PowerCLI\vim.psc1`" -File C:\Scripts\ESXiHostReport.ps1" | Register-ScheduledTask ESXiHostReport
+
+Listing 18.10: Creating Scheduled Tasks from a CSV file
+
+
+$tasks = Import-CSV tasks.csv 
+ foreach ($task in $tasks){ 
+    New-Task | Add-TaskTrigger -DayOfWeek $task.Days -WeeksInterval $task.WeeksInterval -At $task.Time | Add-TaskAction -Path $task.Path -Arguments $task.Arguments | Register-ScheduledTask $task.Name
+ }
+

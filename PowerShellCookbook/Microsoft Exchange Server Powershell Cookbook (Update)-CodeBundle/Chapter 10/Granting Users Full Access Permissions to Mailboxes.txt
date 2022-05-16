@@ -1,0 +1,42 @@
+Example 1:
+
+Add-MailboxPermission -Identity dsmith `
+-User hlawson `
+-AccessRights FullAccess `
+-AutoMapping $false
+
+
+Example 2:
+
+Remove-MailboxPermission -Identity dsmith `
+-User hlawson `
+-AccessRights FullAccess `
+-Confirm:$false
+
+
+Example 3:
+
+Add-MailboxPermission -Identity dsmith `
+-User "IT Help Desk" `
+-AccessRights FullAccess
+
+
+Example 4:
+
+Get-Mailbox -ResultSize Unlimited -RecipientTypeDetails UserMailbox | 
+  Add-MailboxPermission -User "IT Help Desk" `
+  -AccessRights FullAccess
+
+  
+Example 5:
+
+Add-ADPermission -Identity DB01 `
+-User support `
+-AccessRights GenericAll
+
+
+Example 6:
+
+Get-MailboxDatabase | 
+  Add-ADPermission –User support `
+  -AccessRights GenericAll

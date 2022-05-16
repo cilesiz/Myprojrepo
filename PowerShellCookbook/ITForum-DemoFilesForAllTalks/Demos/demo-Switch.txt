@@ -1,0 +1,14 @@
+scat switch1.ps1
+.\switch1.ps1
+cls
+scat switch2.ps1
+.\switch2.ps1
+cls
+scat switch3.ps1
+.\switch3.ps1
+cls
+scat switch4.ps1
+.\switch4.ps1
+cls
+scat switch5.ps1
+.\switch5.ps1

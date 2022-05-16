@@ -1,0 +1,26 @@
+# MetaData and ProxyCommands go together.
+# Let's explore the Write-Host command.
+# Did you realize that it took a ForegroundColor Color
+Write-Host -ForegroundColor RED "PowerShell Rocks"
+# Notice that Write-Host is implemented by a .NET Class
+$wh = Get-command Write-Host 
+$wh |Get-Member
+# We can get the metadata for that cmdlet by providing type 
+# to the constructor for CommandMetaData 
+$MetaData = New-Object System.Management.Automation.CommandMetaData $wh.ImplementingType
+$MetaData
+# Once you have the metadata, you can party on it
+$MetaData.Name = "Write-MyHost"
+# Now we'll remove that -ForegroundColor color parameter
+$MetaData.Parameters.Remove("ForegroundColor")
+# At this point is import to realize that we are just messing with
+# a datastructure - no changes to the cmdlet have taken place
+Write-Host -ForegroundColor RED "PowerShell Rocks"
+# BUT now I can use the ProxyCommand to generate a script:
+[System.Management.Automation.ProxyCommand]::create($MetaData) > .\write-myhost.ps1
+# Notice that this generates a script cmdlet which calls the underlying Cmdlet class!
+Notepad .\Write-MyHost.ps1
+# Now we'll dot-source it to import that function
+. .\Write-MyHost.ps1
+# Now you can call Write-MyHost and you'll see that -ForeGroundColor no longer exits
+Write-MyHost -ForegroundColor RED "PowerShell Rocks"

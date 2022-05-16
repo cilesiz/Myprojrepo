@@ -1,0 +1,631 @@
+################################################################
+# Listing 11.1: Creating a full database backup
+################################################################
+# Load SQLServer SMO assemblies
+[System.Reflection.Assembly]::LoadWithPartialName("Microsoft.SqlServer.Smo") | Out-Null
+
+# Create SQL Server object
+$serverObject = New-Object "Microsoft.SqlServer.Management.Smo.Server" "LOCALHOST\SQLEXP_VIM" 
+
+# Create Backup object
+$backupObject = New-Object "Microsoft.SqlServer.Management.Smo.Backup"
+
+# Define the database to backup
+$backupObject.Database = "VIM_VCDB"
+
+# Add the backup file to the devices collection
+$backupObject.Devices.AddDevice("D:\Backup\VIM_VCDB_FULL.bak", "File") 
+
+# Define the backup type to generate a FULL backup
+$backupObject.Action = 'Database'
+
+# Start the backup
+$backupObject.SqlBackup($serverObject)
+
+################################################################
+# Listing 11.2: Backing up MsSqlDatabase
+################################################################
+function Backup-MsSqlDatabase {
+<#
+.SYNOPSIS
+  Backup a Microsoft SQL database
+.DESCRIPTION
+  This function backs up a Microsoft SQL database using
+  SQL Server Management Objects (SMO)
+.NOTES
+  Source:  Automating vSphere Administration
+  Authors: Luc Dekens, Arnim van Lieshout, Jonathan Medd,
+           Alan Renouf, Glenn Sizemore
+.PARAMETER instance
+  The SQL Server instance to backup. e.g. VC01\SQLEXP_VIM
+.PARAMETER database
+  An array of databases to backup.
+  If omitted all databases on the server instance are backed up
+.PARAMETER backupType
+  The backup type. Valid options are Full,Diff,Log
+.PARAMETER path
+  The path where the backup files will be written.
+  If omitted the default server backup location will be used
+.EXAMPLE
+  PS> Backup-MsSqlDatabase -Instance vc01\sqlexp_vim -Database vim_vcdb -Backuptype full -Path c:\sqlbackup
+#>
+
+  Param (
+    [parameter(mandatory = $true,
+    HelpMessage = "Enter an MSSQL instance")]
+      [String]$Instance,
+      [string[]]$Database,
+    [parameter(mandatory = $true,
+    HelpMessage = "Enter the backup type (Full,Diff,Log)")]
+      [string]$BackupType ,
+    [parameter(mandatory = $true,
+    HelpMessage = "Enter the backup path")]
+      [string]$Path)
+
+# Load SQLServer SMO assemblies
+  [System.Reflection.Assembly]::LoadWithPartialName("Microsoft.SqlServer.Smo") | Out-Null
+# For SQL Server 2008, you also need to load
+# Microsoft.SqlServer.SmoExtended
+  [System.Reflection.Assembly]::LoadWithPartialName("Microsoft.SqlServer.SmoExtended") | Out-Null
+
+# Create backup directory    
+  if (-not (Test-Path $path)){
+    New-Item $path -type directory | out-null
+  }
+
+# Create objects  
+  $serverObject = New-Object "Microsoft.SqlServer.Management.Smo.Server" "$instance" 
+
+  $timeStamp = Get-Date -format yyyyMMddHHmmss
+  if (-not $database) {
+    foreach ($db in $serverObject.databases) {
+# Exclude tempdb
+      if ($db.Name -ne "tempdb") {$database += $db.name}
+    }
+  }
+    
+# process databases
+  foreach ($db in $database) {
+    $backupObject = New-Object "Microsoft.SqlServer.Management.Smo.Backup"
+# evaluate backup type
+    Switch ($backupType) {
+      "Full" {
+        $backupObject.Action = 'Database'
+        $backupObject.Incremental = $false
+        $extension=".BAK"
+        $message="Full Backup of "
+      }
+      "Diff" { 
+        $backupObject.Action = 'Database'
+        $backupObject.Incremental = $true
+        $extension=".DIFF" 
+        $message="Differential Backup of "
+      }
+      "Log" {
+        $backupObject.Action = 'Log'
+        $extension=".LOG"
+        $message="Transactional Log Backup of "
+      }
+      default {
+        Write-Host -foregroundcolor Red 'Invalid Backup Type specified!'
+        return
+      }
+    }
+
+    $backupObject.BackupSetName = $db + " Backup"
+    $backupObject.BackupSetDescription = $message + $db
+    $backupObject.Devices.AddDevice($path + "\" + $db + "_" + $timeStamp + $extension, "File") 
+    $backupObject.Database = $db
+    $backupObject.SqlBackup($serverObject)
+
+    Write-Host $message$db finished
+  }
+}
+
+################################################################
+# Listing 11.3: Backing up vCenter config files
+################################################################
+function Backup-VcConfig {
+<#
+.SYNOPSIS
+  Backup a vCenter Server's configuration files
+.DESCRIPTION
+  This function backs up the configuration data from
+  a vCenter Server.
+.NOTES
+  Source:  Automating vSphere Administration
+  Authors: Luc Dekens, Arnim van Lieshout, Jonathan Medd,
+           Alan Renouf, Glenn Sizemore
+.PARAMETER vCenter
+  The vCenter Servername by which it will be reachable
+  over the network.
+.PARAMETER destination
+  The destination path where the backup files will be stored
+.PARAMETER vi3license
+  Optional parameter to specify to backup the VI3 license file
+  if you happen to still have ESX 3.x hosts in your environment
+.PARAMETER ssl
+  Optional parameter to specify to backup the ssl certificate
+.PARAMETER config
+  Optional parameter to specify to backup the vCenter
+  config file
+.EXAMPLE
+  PS> Backup-VcConfig -vCenter VC01 -destination c:\temp
+#>
+  Param (
+    [parameter(mandatory = $true,
+    HelpMessage = "Enter your vCenter Server")]
+      [String]$vCenter,
+    [parameter(mandatory = $true,
+    HelpMessage = "Enter a destination path")]
+      [string]$destination,
+    [switch]$vi3License, [switch]$ssl, [switch]$config)
+
+#  Define default paths
+#  Modify these paths to match your installation.
+#
+#  Default paths for Windows2003
+#  $sslPath="\\$vCenter\C$\Documents and Settings\All Users\Application Data\VMware\VMware VirtualCenter\SSL"
+#  $configPath="\\$vCenter\C$\Documents and Settings\All Users\Application Data\VMware\VMware VirtualCenter\vpxd.cfg"
+#
+#  Default paths for Windows2008
+#  $sslPath="\\$vCenter\C$\ProgramData\VMware\VMware VirtualCenter\SSL"
+#  $configPath="\\$vCenter\C$\ProgramData\VMware\VMware VirtualCenter\vpxd.cfg"
+
+  $sslPath="\\$vCenter\C$\ProgramData\VMware\VMware VirtualCenter\SSL"
+  $configPath="\\$vCenter\C$\ProgramData\VMware\VMware VirtualCenter\vpxd.cfg"
+  $licensePath="\\$vCenter\C$\Program Files (x86)\VMware\VMware License Server\Licenses"
+
+  $sourceFiles=@()
+  if ($vi3License) {$sourceFiles += $licensePath}
+  if ($ssl) {$sourceFiles += $sslPath}
+  if ($config) {$sourceFiles += $configPath}
+  if ($vi3License,$ssl,$config -notcontains $true) {
+    $sourceFiles = $SSLPath,$configPath
+  }
+
+# Create backup directory
+  if (-not (Test-Path $destination)){
+    New-Item $destination -type directory |  out-null
+  }
+
+# Create backup
+  Copy-Item -Path $sourceFiles -Destination $destination -Recurse -Force
+}
+
+################################################################
+# Listing 11.4: Restoring MsSqlDatabase
+################################################################
+function Restore-MsSqlDatabase {
+<#
+.SYNOPSIS
+  Restore a Microsoft SQL database
+.DESCRIPTION
+  This function restores a Microsoft SQL database using
+  SQL Server Management Objects (SMO)
+.NOTES
+  Source:  Automating vSphere Administration
+  Authors: Luc Dekens, Arnim van Lieshout, Jonathan Medd,
+           Alan Renouf, Glenn Sizemore
+.PARAMETER instance
+  The SQL Server instance to restore the database
+  to. e.g. VC01\SQLEXP_VIM
+.PARAMETER backupFile
+  The backup file to restore
+.PARAMETER NoRecovery
+  Optional switch to prevent transaction recovery.
+.EXAMPLE
+  PS> Restore-MsSqlDatabase -instance vc01\sqlexp_vim -backupFile c:\sqlbackup\VIM_VCDB_20100729233423.BAK
+#>
+
+  Param (
+    [parameter(mandatory = $true,
+    HelpMessage = "Enter an MSSQL instance")]
+      [String]$instance,
+    [parameter(mandatory = $true,
+    HelpMessage = "Enter the backup file")]
+      [string]$backupFile,
+    [switch]$NoRecovery)
+
+# Load SQLServer SMO assemblies
+  [System.Reflection.Assembly]::LoadWithPartialName("Microsoft.SqlServer.Smo") | Out-Null
+# For SQL Server 2008, you'll also need to load
+# Microsoft.SqlServer.SmoExtended
+  [System.Reflection.Assembly]::LoadWithPartialName("Microsoft.SqlServer.SmoExtended") | Out-Null
+
+# Test backupFile    
+  if (-not (Test-Path $backupfile)){
+    Write-Host backup file: $backupFile not found!
+    Return
+  }
+
+# Create objects  
+  $serverObject = `
+      New-Object "Microsoft.SqlServer.Management.Smo.Server" "$instance" 
+  $restoreObject = `
+      New-Object "Microsoft.SqlServer.Management.Smo.Restore"
+  
+  if ($NoRecovery) {
+    $restoreObject.NoRecovery = $true
+  }
+  else {
+    $restoreObject.NoRecovery = $false
+  }
+  $restoreObject.ReplaceDatabase = $true
+  $restoreObject.Action = "Database"
+  $restoreObject.Devices.AddDevice($backupFile, "File")
+  
+#determine database to restore
+  $restoreInfo = $restoreObject.ReadBackupHeader($serverObject)
+  $restoreObject.Database = $restoreInfo.Rows[0]["DatabaseName"]
+
+#restore database  
+  $restoreObject.SqlRestore($serverObject)
+  Write-Host Restore of $restoreObject.Database finished
+}
+
+################################################################
+# Listing 11.5: Reconnecting ESX hosts
+################################################################
+Function Connect-VMHost {
+<#
+.SYNOPSIS
+  Connect a disconnected ESX host
+.DESCRIPTION
+  This function (re)connects a disconnected ESX host.
+.NOTES
+  Source:  Automating vSphere Administration
+  Authors: Luc Dekens, Arnim van Lieshout, Jonathan Medd,
+           Alan Renouf, Glenn Sizemore
+.PARAMETER vmHost
+  The VMHost object to connect
+.PARAMETER credential
+  A PSCredential object used to authenticate the VMHost server
+.PARAMETER user
+  The user account used to authenticate the VMHost server
+.PARAMETER password
+  The password for the account specified by the -User parameter
+.PARAMETER reconnect
+  An optional switch parameter to force a disconnect first
+.EXAMPLE
+  PS> Connect-VMHost -VMHost MyESX -User root -Password password
+.EXAMPLE
+  PS> Get-VMHost myESX | Connect-VMHost -User root -Password password -Reconnect
+.EXAMPLE
+  PS> Get-VMHost myESX | Connect-VMHost -Credential (Get-Credential)
+#>
+
+  Param (
+    [Parameter(ValueFromPipeline = $true, Position = 0,
+    Mandatory = $true,
+    HelpMessage = "Enter an ESX(i) host entity")] 
+      [VMware.VimAutomation.ViCore.Impl.V1.Inventory.VMHostImpl]$vmHost,
+    [Parameter(Mandatory = $true, ParameterSetName = "cred",
+    HelpMessage = "Enter a PSCredential object")]
+      [System.Management.Automation.PSCredential]$credential,
+    [Parameter(ParameterSetName = "user")]
+    [ValidateNotNullOrEmpty()]
+      [string]$user = "root",
+    [Parameter(Mandatory = $true, ParameterSetName = "user",
+    HelpMessage = "Enter the root account password")]
+      [string]$password,
+    [switch]$reconnect)
+    
+  Process {
+    if($vmHost) {
+      $vmHostView = $vmHost | Get-View
+    }
+    else {
+      $vmHostView = $_ | Get-View
+    }
+
+# Create a new HostConnectSpec object
+    $objHostConnectSpec = New-Object VMware.Vim.HostConnectSpec
+    if ($credential) {
+      $objHostConnectSpec.userName = 
+        $credential.GetNetworkCredential().UserName
+      $objHostConnectSpec.password = 
+        $credential.GetNetworkCredential().Password
+    }
+    else {
+      $objHostConnectSpec.userName = $user
+      $objHostConnectSpec.password = $password
+    }
+
+# if Reconnect switch is specified disconnect host first
+    if ($reconnect) {
+      Write-Host "Disconnecting $($vmHost.Name) " -NoNewline
+      $taskMoRef = $vmHostView.DisconnectHost_Task()
+      $task = Get-View $taskMoRef
+      while ("running","queued" -contains $task.Info.State){
+        Write-Host "." -NoNewline
+        Sleep 2
+        $task.UpdateViewData("Info.State")
+      }
+      Write-Host "Done"
+      $task.UpdateViewData("Info.Result")
+      $task.Info.State
+    }
+
+# Connect host
+    Write-Host "Connecting $($vmHost.Name) " -NoNewline
+    $taskMoRef = $vmHostView.ReconnectHost_Task($objHostConnectSpec)
+    $task = Get-View $taskMoRef
+    while ("running","queued" -contains $task.Info.State){
+      Write-Host "." -NoNewline
+      Sleep 2
+      $task.UpdateViewData("Info.State")
+    }
+    Write-Host "Done"
+    $task.UpdateViewData("Info.Result")
+    $task.Info.State
+  }
+}
+
+################################################################
+# Listing 11.6: Retrieving the folder structure
+################################################################
+function Get-FolderStructure {
+<#
+.SYNOPSIS
+  Retrieve folder structure
+.DESCRIPTION
+  This function retrieves the folder structure beneath
+  the given container
+.NOTES
+  Source:  Automating vSphere Administration
+  Authors: Luc Dekens, Arnim van Lieshout, Jonathan Medd,
+           Alan Renouf, Glenn Sizemore
+.EXAMPLE
+  PS> Get-Datacenter DC01 | Get-FolderStructure
+#>
+
+  process {
+    $folder = "" | select Name,Children
+    $folder.Name = $_.Name
+    $folder.Children = @($_ | Get-Folder -NoRecursion | Get-FolderStructure)
+    $folder
+  }
+}
+
+################################################################
+# Listing 11.7: Retrieving the object path
+################################################################
+function Get-VIPath {
+<#
+.SYNOPSIS
+  Retrieve the full path of an inventory object
+.DESCRIPTION
+  This function retrieves the full path of the given
+  inventory object
+.NOTES
+  Source:  Automating vSphere Administration
+  Authors: Luc Dekens, Arnim van Lieshout, Jonathan Medd,
+           Alan Renouf, Glenn Sizemore
+.PARAMETER inputObject
+  The inventory object to retrieve the full path from
+.PARAMETER childPath
+  Optional parameter used by the function when calling itself
+  recursively
+.EXAMPLE
+  PS> Get-Datacenter DC01 | Get-VIPath
+#>
+  
+  param (
+    [parameter(valuefrompipeline = $true, mandatory = $true,
+    HelpMessage = "Enter an inventory object entity")]
+      $InputObject,
+    [parameter(mandatory = $false,
+    HelpMessage = "Enter a path object")] $ChildPath)
+
+  process {
+    if($inputObject.parent) {
+      $parent = Get-View $inputObject.parent
+      if ($parent.gettype().name -eq "Datacenter") {
+        $childPath
+      } else {
+        $path = "" | select Name,Child
+        $path.Name = $parent.Name
+        $path.Child = $childPath
+        $parent | Get-VIPath -Child $path
+      }
+    }
+    else {
+      $childPath
+    }
+  }
+}
+
+################################################################
+# Listing 11.8: Creating a folder structure
+################################################################
+filter New-FolderStructure {
+  param($parent)
+  if (-not($folder = Get-Folder $_.name -Location $parent -ErrorAction:SilentlyContinue)) {
+    $folder = New-Folder $_.name -Location $parent
+  }
+  $_.children | New-FolderStructure($folder)
+}
+
+################################################################
+# Listing 11.9: Retrieving locations
+################################################################
+filter Get-VILocation {
+  param($parent)
+  if ($_.child) {
+    $_.child | Get-VILocation(Get-Folder -Location $parent $_.Name)
+  } else {
+    Get-Folder -Location $parent $_.Name
+  }
+}
+
+################################################################
+# Listing 11.10: Escaping regular expression metacharacters
+################################################################
+filter Escape-MetaCharacters {
+  ForEach($MetaChar in '^','$','{','}','[',']','(',')','.','*','+','?','|','<','>','-','&') {
+    $_=$_.replace($MetaChar,"\$($Metachar)")
+  }
+  $_
+}
+
+################################################################
+# Listing 11.11: Searching datastores for VMX files
+################################################################
+function Register-VMX {
+<#
+.SYNOPSIS
+  Find and register virtual machines
+.DESCRIPTION
+  This function searches datastores for vmx or vmtx files and
+  then registers the virtual machines. You can search on one or
+  more datastores, a host, a cluster or a datacenter
+.NOTES
+  Source:  Automating vSphere Administration
+  Authors: Luc Dekens, Arnim van Lieshout, Jonathan Medd,
+           Alan Renouf, Glenn Sizemore
+.PARAMETER entityNames
+  An array of entity names. Only clusters, datacenters or
+  ESX hosts are allowed.
+  Wildcards are supported. (mutually exclusive with -dsNames)
+.PARAMETER dsNames
+  An array of datastore names. Wildcards are supported.
+  (mutually exclusive with -entityNames)
+.PARAMETER ignore
+  An array of folder names that shouldn't be checked.
+  No wildcards allowed!
+.PARAMETER template
+  when set, the function searches for templates (.vmtx)
+  otherwise it will search for guests (.vmx)
+.PARAMETER checkNFS
+  When set, the NFS datastores are included in the search
+.PARAMETER whatif
+  When set, the function will only list output to the console
+  and not register the found vmx files
+.EXAMPLE
+  PS> Register-VMX -entityName "MyDatacenter"
+.EXAMPLE
+  PS> Register-VMX -dsNames "datastore1","datastore2" -template:$true
+.EXAMPLE
+  PS> Register-VMX -dsNames "datastore3" -ignore "SomeFolder" -checkNFS:$true 
+.EXAMPLE
+  PS> Register-VMX -entityName "MyCluster" -whatif:$true
+#>
+  param(
+    [Parameter(Mandatory = $true,
+    ParameterSetName = "entityNames",
+    HelpMessage = "Enter cluster, datacenter or ESX host name")]
+      [string[]]$entityNames,
+    [Parameter(Mandatory = $true, ParameterSetName = "dsNames",
+    HelpMessage = "Enter one or more datastore names")]
+      [String[]]$dsNames,
+    [switch]$template, [string[]]$ignore,
+    [switch]$checkNFS, [switch]$whatif)
+
+  if($dsNames) {
+    $datastores = Get-Datastore -Name $dsNames | where {$_.Type -eq "VMFS" -or $checkNFS} | Select -Unique
+  }
+  else {
+    $datastores=@()
+    foreach($entity in Get-Inventory -Name $entityNames) {
+      switch(($entity | Get-View).GetType().Name){
+        "ClusterComputeResource" {
+          $datastores += Get-Cluster -Name $entity | Get-VMHost | Get-Datastore | where {$_.Type -eq "VMFS" -or $checkNFS} | Select -Unique
+        }
+        "Datacenter" {
+          $datastores += Get-Datacenter -Name $entity | Get-Datastore | where {$_.Type -eq "VMFS" -or $checkNFS} | Select -Unique
+        }
+        "HostSystem" {
+          $datastores += Get-VMHost -Name $entity | Get-Datastore | where {$_.Type -eq "VMFS" -or $checkNFS} | Select -Unique
+        }
+        Default {
+          Write-Host -foregroundcolor Red "Invalid entity type [$_] specified!"
+          Return
+        }
+      }
+    }
+  }
+  if($template){
+    $pattern = "*.vmtx"
+  }
+  else {
+    $pattern = "*.vmx"
+  }
+  if ($datastores) {
+    $datastores = $datastores | Select -Unique | Sort-Object -Property Name
+    foreach($datastore in $datastores){
+      Write-Host "Checking " -NoNewline
+      Write-Host -ForegroundColor red -BackgroundColor yellow $datastore.Name
+      $dsView = $datastore | Get-View
+      $dsBrowser = Get-View $dsView.Browser
+      $dc = Get-View $dsView.Parent
+      while($dc.MoRef.Type -ne "Datacenter"){
+        $dc = Get-View $dc.Parent
+      }
+      $targetFolder = Get-View $dc.VmFolder
+      $esxHost = Get-View ($dsView.host | Get-Random).key
+      $pool = Get-View (Get-View $esxHost.Parent).ResourcePool
+  
+      $registeredVMs = @()
+      foreach($vm in $dsView.Vm){
+        $vmView = Get-View $vm
+        $registeredVMs += $vmView.Config.Files.VmPathName
+      }
+      $datastorepath = "[" + $dsView.Name + "]"
+  
+      $searchspec = New-Object VMware.Vim.HostDatastoreBrowserSearchSpec
+      $searchspec.MatchPattern = $pattern
+  
+      $taskMoRef = $dsBrowser.SearchDatastoreSubFolders_Task($datastorePath, $searchSpec)
+  
+      $task = Get-View $taskMoRef
+      while ("running","queued" -contains $task.Info.State){
+        $task.UpdateViewData("Info.State")
+      }
+      $task.UpdateViewData("Info.Result")
+      foreach ($folder in $task.Info.Result){
+        if($folder.file -ne $null){
+          if($folder.FolderPath[-1] -ne "/"){
+            $folder.FolderPath += "/"
+          }
+          $vmx = $folder.FolderPath + $folder.File[0].Path
+          $skip = $false
+          if($ignore){
+            $folder.FolderPath.Split("]")[1].Trim(" /").Split("/") | %{$skip = $skip -or ($ignore -contains $_)}
+          }
+          if($skip) {
+            Write-Host -ForegroundColor red "`t" $vmx "Ignored!"
+          }
+          else {
+            $exists = $false
+            foreach($registeredVM in $registeredVMs){
+              if($vmx -eq $registeredVM){
+                $exists = $true
+              }
+            }
+            if ($exists){
+              Write-Host -ForegroundColor red "`t" $vmx "Skipped! Already registered"
+            }
+            else {
+              if($template){
+                $params = @($vmx,$null,$true,$null,$esxHost.MoRef)
+              }
+              else{
+                $params = @($vmx,$null,$false,$pool.MoRef,$null)
+              }
+              if(!$whatif){
+                $taskMoRef = $targetFolder.GetType().GetMethod("RegisterVM_Task").Invoke($targetFolder, $params)
+                Write-Host -ForegroundColor green "`t" $vmx "registered"
+              }
+              else{
+                Write-Host -ForegroundColor green "`t" $vmx "registered" -NoNewline
+                Write-Host -ForegroundColor blue -BackgroundColor white " ==> What If"
+              }
+            }
+          }
+        }
+      }
+      Write-Host "Done"
+    }
+  }
+}

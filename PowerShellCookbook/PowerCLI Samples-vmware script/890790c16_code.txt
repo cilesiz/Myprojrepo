@@ -1,0 +1,1107 @@
+function Get-Alarm{
+<#
+.SYNOPSIS
+  Return an object for each alarm that fits the parameters
+.DESCRIPTION
+  The function will return an object for each alarm it finds.
+  The function takes an entity or a name to look for alarms.
+.PARAMETER Entity
+  Only return alarms that are defined in this entity. Depending
+  on the -Recurse switch, the function will decend all 
+  branches from the Entity or not.
+.PARAMETER Name
+  Search for alarms whose name matches the one specified on
+  this parameter. 
+.PARAMETER Recurse
+  A switch that defines if the function should look also in the
+  branches beneath the entity.
+.NOTES
+  Source:  Automating vSphere Administration
+  Authors: Luc Dekens, Arnim van Lieshout, Jonathan Medd,
+           Alan Renouf, Glenn Sizemore
+.EXAMPLE
+  PS> Get-Alarm -Name “Book: *”
+.EXAMPLE
+  PS> $dc = Get-Datacenter -Name MyDC
+  PS> Get-Alarm -Entity $dc -Recurse:$false 
+#>
+
+  param(
+  [parameter(position = 0,HelpMessage = "Enter a VI Object")]
+  [PSObject]$Entity,
+  [string]$Name = "*",
+  [switch]$Recurse = $true
+  )
+
+  begin{
+    $alarmMgr = Get-View AlarmManager
+    $perfMgr = Get-View (Get-View ServiceInstance).Content.PerfManager
+  }
+
+  process{
+    if($entity){
+      $alarms = $alarmMgr.GetAlarm($entity.Extensiondata.MoRef) | %{Get-View $_}
+    }
+    else{
+      $alarms = $alarmMgr.GetAlarm($null) | %{Get-View $_}
+    }
+    $alarms | where {$_.Info.Name -like $Name} | %{
+      New-Object PSObject -Property @{
+        Name = $_.Info.Name
+        Description = $_.Info.Description
+        Action = & {
+          if($_.Info.Action){
+            $_.Info.Action | %{
+              New-Object PSObject -Property @{
+                Type = $_.GetType().Name
+                Action = & {
+                  $_.Action | %{
+                    New-Object PSObject -Property @{
+                      Type = $_.GetType().Name
+                      Action = & {
+                        $_.Action | %{
+                          $Action = $_
+                          switch($_.GetType().Name){
+                            "CreateTask" {
+                              New-Object PSObject -Property @{
+                                Type = "CreateTask"
+                                Cancelabe = $action.Cancelable
+                                TaskTypeId = $action.taskTypeId
+                              }
+                            }
+                            "MethodAction" {
+                              New-Object PSObject -Property @{
+                                Type = "MethodAction"
+                                Name = $action.Name
+                                Argument = $action.argument
+                              }
+                            }
+                            "RunScriptAction" {
+                              New-Object PSObject -Property @{
+                                Type = "RunScriptAction"
+                                Script = $action.Script
+                              }
+                            }
+                            "SendEmailAction" {
+                              New-Object PSObject -Property @{
+                                Type = "SendEmailAction"
+                                Body = $action.Body
+                                CcList = $action.CcList
+                                Subject = $action.Subject
+                                ToList = $action.ToList
+                              }
+                            }
+                            "SendSNMPAction" {
+                              New-Object PSObject -Property @{
+                                Type = "SendSNMPAction"
+                              }
+                            }
+                          }
+                        }
+                      }
+                      Green2yellow = $_.Green2yellow
+                      Red2yellow = $_.Red2yellow
+                      TransitionSpec = & {
+                        $_.TransitionSpecs | %{
+                          New-Object PSObject -Property @{
+                            FinalState = $_.FinalState
+                            Repeats = $_.Repeats
+                            StartState = $_.StartState
+                          }
+                        }
+                      }
+                      Yellow2green = $_.Yellow2green
+                      Yellow2red = $_.Yellow2red
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+        ActionFrequency = $_.Info.actionFrequency
+        Enabled = $_.Info.Enabled
+        Expression = & {
+          if($_.Info.Expression){
+            New-Object PSObject -Property @{
+              Type = $_.Info.Expression.GetType().Name
+              Expression = & {
+                if($_.Info.Expression.Expression){
+                  foreach($expression in $_.Info.Expression.Expression){
+                    switch($expression.GetType().Name){
+                      "EventAlarmExpression" {
+                        New-Object PSObject -Property @{
+                          Comparisons = & {
+                            if($expression.Comparisons){
+                              $expression.Comparisons | %{
+                                New-Object PSObject -Property @{
+                                  AttributeName = $_.AttributeName
+                                  Operator = $_.Operator
+                                  Value = $_.Value
+                                }
+                              }
+                            }
+                          }
+                          EventType = $expression.EventType
+                          EventTypeId = $expression.EventTypeId
+                          ObjectType = $expression.ObjectType
+                          Status = $expression.Status
+                          ExpressionType = "EventAlarmExpression"
+                        }
+                      }
+                      "MetricAlarmExpression" {
+                        New-Object PSObject -Property @{
+                          Metric = & {
+                            New-Object PSObject -Property @{
+                              Counter = & {
+                                $metric = $perfMgr.QueryPerfCounter($expression.Metric.CounterId)
+                                $metric[0].groupInfo.Key + '.' + $metric[0].nameInfo.Key + '.' + $metric[0].rollupType
+                              }
+                              Instance = $expression.Metric.Instance
+                            }
+                          }
+                          Operator = $expression.operator
+                          Red = $expression.red
+                          RedInterval = $expression.redInterval
+                          Type = $expression.type
+                          Yellow = $expression.yellow
+                          YellowInterval = $expression.yellowInterval
+                          ExpressionType = "MetricAlarmExpression"
+                        }
+                      }
+                      "StateAlarmExpression" {
+                        New-Object PSObject -Property @{
+                          Operator = $expression.operator
+                          Red = $expression.red
+                          StatePath = $expression.statePath
+                          Type = $expression.type
+                          Yellow = $expression.yellow
+                          ExpressionType = "StateAlarmExpression"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+        Setting = & {
+          if($_.Info.Setting){
+            New-Object PSObject -Property @{
+              ReportingFrequency = $_.Info.Setting.ReportingFrequency
+              ToleranceRange = $_.Info.Setting.ToleranceRange
+            }
+          }
+        }
+        Entity = New-Object PSObject -Property @{
+          Type = $_.Info.Entity.Type
+          Name = (Get-View $_.Info.Entity).Name
+        }
+      }
+    }
+  } 
+}
+
+function Get-AlarmEventId{
+  <#
+.SYNOPSIS
+  Returns the data needed to define an EventAlarmExpression
+.DESCRIPTION
+  The function will return the required properties that
+  are needed to populate the eventType and eventTypeId
+  properties
+.NOTES
+    Source:  Automating vSphere Administration
+    Authors: Luc Dekens, Arnim van Lieshout, Jonathan Medd,
+             Alan Renouf, Glenn Sizemore
+.EXAMPLE
+  PS> Get-AlarmEventId | Export-Csv "C:\Alarm-eventId.csv"
+#>
+
+  begin{
+    $commonArgs = "changeTag","computeResource","computeResource.name",
+                  "datacenter","datacenter.name","ds","ds.name","dvs",
+                  "dvs.name","fullFormattedMessage","host","host.name",
+                  "net","net.name","userName","vm","vm.name"
+  }
+  
+  process{
+    $evtMgr = Get-View EventManager
+
+    $evtMgr.Description.EventInfo |%{
+      $row = "" | Select EventType,EventTypeId,Group,Description,Attributes
+      $row.Description = $_.Description
+      if($_.Key -eq "eventEx"){
+        $eventTypeName = $_.FullFormat.Split("|")[0]
+        $row.EventType = "EventEx|ExtendedEvent"
+        $row.EventTypeId = $_.FullFormat.Split("|")[0]
+        $attributes = $evtMgr.RetrieveArgumentDescription($row.EventTypeId)
+        if($attributes){
+          $specialAttributes = $attributes | `
+            where{$commonArgs -notcontains $_.Name} | `
+            %{$_.Name + "(" + $_.Type + ")"}
+          if($specialAttributes.Count){
+            $row.Attributes = [string]::Join(',',$specialAttributes)
+          }
+          elseif($specialAttributes){
+            $row.Attributes = $specialAttributes
+          }
+        }
+        $row.Group = "EventEx"
+      }
+      elseif($_.Key -eq "ExtendedEvent"){
+        $row.EventType = "ExtendedEvent|EventEx"
+        $row.EventTypeId = $_.FullFormat.Split("|")[0]
+        $attributes = $evtMgr.RetrieveArgumentDescription($row.EventTypeId)
+        if($attributes){
+          $specialAttributes = $attributes | `
+            where{$commonArgs -notcontains $_.Name} | `
+            %{$_.Name + "(" + $_.Type + ")"}
+          if($specialAttributes.Count){
+            $row.Attributes = [string]::Join(',',$specialAttributes)
+          }
+          elseif($specialAttributes){
+            $row.Attributes = $specialAttributes
+          }
+        }
+        $row.Group = "ExtendedEvent"
+      }
+      else{
+        $eventTypeName = $_.Key
+        $row.EventType = $eventTypeName
+        $row.EventTypeId = "vim.event." + $_.Key
+        $attributes = $evtMgr.RetrieveArgumentDescription($row.EventTypeId)
+        if($attributes){
+          $specialAttributes = $attributes | `
+            where{$commonArgs -notcontains $_.Name} | `
+            %{$_.Name + "(" + $_.Type + ")"}
+          if($specialAttributes.Count){
+            $row.Attributes = [string]::Join(',',$specialAttributes)
+          }
+          elseif($specialAttributes){
+            $row.Attributes = $specialAttributes
+          }
+        }
+        $row.Group = "regular"
+      }
+      $row
+    }
+  }
+}
+
+function Get-AlarmScript{
+<#
+.SYNOPSIS
+  Returns a .ps1 script that creates the alarm that was passed
+  with the Alarm parameter
+.DESCRIPTION
+  This function takes an object that is returned by the Get-Alarm
+  function and will generate a .ps1 script that can be used to
+  create the same alarm.
+.PARAMETER Alarm
+  The object returned by the Get-Alarm function
+.NOTES
+  Source:  Automating vSphere Administration
+  Authors: Luc Dekens, Arnim van Lieshout, Jonathan Medd,
+           Alan Renouf, Glenn Sizemore
+.EXAMPLE
+  PS> Get-Alarm -Name “Book: an alarm” | Get-AlarmScript
+.EXAMPLE
+  PS> $alarm = Get-Alarm -Name "Book: an alarm"
+  PS> $script = Get-AlarmScript -Alarm $alarm
+  PS> Set-Content "C:\alarm.ps1" -Value $script 
+#>
+
+  param(
+  [parameter(valuefrompipeline = $true)]
+  [PSObject]$Alarm
+  )
+
+  begin{
+    $perfMgr = Get-View (Get-View ServiceInstance).Content.PerfManager
+    $perfTab = @{}
+    $perfMgr.PerfCounter | %{
+      $perfTab[$_.GroupInfo.Key + '.' + $_.NameInfo.Key + '.' + $_.RollupType] = $_.Key
+    }
+  }
+
+  process{
+    $alarm | %{
+      $text = @()
+
+      $text += '#requires -version 2'
+      $text += '#requires -pssnapin VMware.VimAutomation.Core -version 4.1'
+      $text += ''
+      $text += '$spec = New-Object VMware.Vim.AlarmSpec'
+      $text += '$spec.Name = "' + $Alarm.Name + '"'
+      $text += '$spec.Description = "' + $Alarm.Description + '"'
+      $text += '$spec.ActionFrequency = ' + [int]$Alarm.ActionFrequency
+      $text += '$spec.Enabled = $' + $Alarm.Enabled
+      $text += ''
+      if($Alarm.Action){
+        $text += '$action = New-Object VMware.Vim.' + $Alarm.Action.Type
+        $text += ''
+        $i = 1
+        foreach($action in $Alarm.Action.Action){
+          $text += '$action' + $i + ' = New-Object VMware.Vim.' + $action.Type
+          $text += '$action' + $i + '.Green2yellow = $' + $action.Green2yellow
+          $text += '$action' + $i + '.Red2yellow = $' + $action.Red2yellow
+          $text += '$action' + $i + '.Yellow2green = $' + $action.Yellow2green
+          $text += '$action' + $i + '.Yellow2red = $' + $action.Yellow2red
+
+          switch($action.Action.Type){
+            "SendEmailAction" {
+              $text += '$action' + $i + '.Action = New-Object VMware.Vim.SendEmailAction'
+              $text += '$action' + $i + '.Action.Body = "' + $action.Action.Body + '"'
+              $text += '$action' + $i + '.Action.CcList = "' + $action.Action.CcList + '"'
+              $text += '$action' + $i + '.Action.Subject = "' + $action.Action.Subject + '"'
+              $text += '$action' + $i + '.Action.ToList = "' + $action.Action.ToList + '"'
+              $text += ''
+            }
+            "SendSNMPAction" {
+              $text += '$action' + $i + '.Action = New-Object VMware.Vim.SendSNMPAction'
+              $text += ''
+            }
+            "MethodAction"{
+              $text += '$action' + $i + '.Action = New-Object VMware.Vim.MethodAction'
+              $text += '$action' + $i + '.Action.Name = "' + $action.Action.Name + '"'
+              $text += '$methodArgs = @()'
+              $text += ''
+              $action.Action.Argument | %{
+                $text += '$methodArg = New-Object VMware.Vim.MethodActionArgument'
+                $argType = $_.Value.GetType().Name
+                if($argType -eq "Int32"){
+                  $text += '$methodArg.Value = ' + $_.Value
+                }
+                elseif($argType -eq "Boolean"){
+                  $text += '$methodArg.Value = $' + $_.Value
+                }
+                else{
+                  $text += '$methodArg.Value = "' + $_.Value + '"'
+                }
+                $text += '$methodArgs += $methodArg'
+              }
+              $text += ''
+              $text += '$action' + $i + '.Action.Argument = $methodArgs'
+            }
+# There seems to be a bug in the Task action.
+# Feature is disabled for now.
+#
+#             "CreateTask"{
+#               $text += '$action' + $i + '.Action = New-Object VMware.Vim.CreateTaskAction'
+#             }
+            "RunScriptAction"{
+              $text += '$action' + $i + '.Action = New-Object VMware.Vim.RunScriptAction'
+              $text += '$action' + $i + '.Action.Script = "' + $action.Action.Script + '"'
+            }
+          }
+
+          $j = 1
+          foreach($trans in $action.TransitionSpec){
+            $text += '$trans' + $j + ' = New-Object VMware.Vim.AlarmTriggeringActionTransitionSpec'
+            $text += '$trans' + $j + '.StartState = "' + $trans.StartState + '"'
+            $text += '$trans' + $j + '.FinalState = "' + $trans.FinalState + '"'
+            $text += '$trans' + $j + '.Repeats = $' + $trans.Repeats
+            $text += ''
+            $text += '$action' + $i + '.TransitionSpecs += $trans' + $j
+            $text += ''
+            $j++
+          }
+          $text += '$action.' + 'Action += $action' + $i
+          $text += ''
+          $i++
+        }
+        $text += ''
+        $text += '$spec.Action = $action'
+        $text += ''
+      }
+
+      if($Alarm.Expression){
+        $text += '$expression = New-Object VMware.Vim.' + $Alarm.Expression.Type
+        $text += ''
+        if($Alarm.Expression.Expression){
+          $i = 1
+          foreach($expression in $Alarm.Expression.Expression){
+            switch($expression.ExpressionType){
+              "EventAlarmExpression" {
+                $text += '$expression' + $i + ' = New-Object VMware.Vim.' + $expression.ExpressionType
+                if($expression.Comparisons){
+                  $j = 1
+                  $expression.Comparisons | %{
+                    $text += ''
+                    $text += '$comparison' + $j + ' = VMware.Vim.EventAlarmExpressionComparison'
+                    $text += '$comparison' + $j + '.attributeName = ' + $_.AttributeName
+                    $text += '$comparison' + $j + '.operator = ' + $_.Operator
+                    $text += '$comparison' + $j + '.value = ' + $_.value
+                    $text += '$expression.Comparisons += $comparison' + $j
+                  }
+                }
+                $text += '$expression' + $i + '.EventType = ' + '"' + $expression.EventType + '"'
+                $text += '$expression' + $i + '.EventTypeId = ' + '"' + $expression.EventTypeId + '"'
+                $text += '$expression' + $i + '.ObjectType = ' + '"' + $expression.ObjectType + '"'
+                $text += '$expression' + $i + '.status = ' + '"' + $expression.Status + '"'
+                $text += '' 
+              }
+              "MetricAlarmExpression" {
+                $text += '$expression' + $i + ' = New-Object VMware.Vim.' + $expression.ExpressionType
+                $text += '$expression' + $i + '.metric = New-Object VMware.Vim.PerfMetricId'
+                $text += '$expression' + $i + '.metric.counterId = ' + $perfTab[$expression.Metric.Counter]
+                $text += '$expression' + $i + '.metric.instance = "' + $expression.Metric.Instance + '"'
+                $text += '$expression' + $i + '.operator = "' + $expression.Operator + '"'
+                $text += '$expression' + $i + '.red = ' + $expression.Red
+                if($expression.redInterval){
+                  $text += '$expression' + $i + '.redInterval = ' + $expression.redInterval
+                }
+                $text += '$expression' + $i + '.type = "' + $expression.Type + '"'
+                $text += '$expression' + $i + '.yellow = ' + $expression.Yellow
+                if($expression.yellowInterval){
+                  $text += '$expression' + $i + '.yellowInterval = ' + $expression.yellowInterval
+                }
+                $text += '' 
+              }
+              "StateAlarmExpression" {
+                $text += '$expression' + $i + ' = New-Object VMware.Vim.' + $expression.ExpressionType
+                $text += '$expression' + $i + '.operator = "' + $expression.Operator + '"'
+                $text += '$expression' + $i + '.red = ' + $expression.Red
+                $text += '$expression' + $i + '.statePath = ' + $expression.StatePath
+                $text += '$expression' + $i + '.type = "' + $expression.Type +'"'
+                $text += '$expression' + $i + '.yellow = ' + '"' + $expression.Yellow + '"'
+                $text += '' 
+              }
+            }
+            $text += '$expression.Expression += $expression' + $i
+            $text += ''
+            $i++
+          }
+        }
+        $text += '$spec.Expression = $expression'
+        $text += ''
+      }
+
+      if($Alarm.Setting){
+        $text += '$setting = New-Object VMware.Vim.AlarmSetting'
+        $text += '$setting.reportingFrequency = ' + $Alarm.Setting.ReportingFrequency
+        $text += '$setting.toleranceRange = ' + $Alarm.Setting.ToleranceRange
+        $text += ''
+        $text += '$spec.Setting = $setting'
+        $text += ''
+      }
+
+      $text += '$entity = Get-Inventory -Name ' + $Alarm.Entity.Name
+      $text += ''
+      $text += '$alarmMgr = Get-View AlarmManager'
+      $text += '$alarmMgr.CreateAlarm($entity.Extensiondata.MoRef,$spec)'
+
+      $text
+    }
+  }
+}
+
+function New-AlarmActionSnmp{
+<#
+.SYNOPSIS
+  Create an object for an Alarm SNMP action
+.DESCRIPTION
+  The function will create an object that defines
+  a SNMP action.
+  The object is intended to be used in the 
+  New-Alarm function
+.NOTES
+  Source:  Automating vSphere Administration
+  Authors: Luc Dekens, Arnim van Lieshout, Jonathan Medd,
+           Alan Renouf, Glenn Sizemore
+.EXAMPLE
+  PS> New-AlarmActionSnmp 
+#>
+  New-Object PSObject -Property @{
+    Type = "Snmp"
+  }
+}
+
+function New-AlarmActionEmail{
+<#
+.SYNOPSIS
+  Create an object for an Alarm Email action
+.DESCRIPTION
+  The function will create an object that defines
+  an Email action.
+  The object is intended to be used in the 
+  New-Alarm function
+.NOTES
+  Source:  Automating vSphere Administration
+  Authors: Luc Dekens, Arnim van Lieshout, Jonathan Medd,
+           Alan Renouf, Glenn Sizemore
+.EXAMPLE
+  PS> New-AlarmActionEmail -To lucd@lucd.info `
+  >> -Subject "Alarm fired"
+#>
+
+  param(
+  [string]$To,
+  [string]$Cc,
+  [string]$Subject,
+  [string]$Body
+  )
+
+  New-Object PSObject -Property @{
+    Type = "Mail"
+    To = $to
+    Cc = $cc
+    Subject = $subject
+    Body = $body
+  }
+}
+
+function New-AlarmActionMethod{
+<#
+.SYNOPSIS
+  Create an object for an Alarm Method action
+.DESCRIPTION
+  The function will create an object that defines
+  a Method action.
+  The object is intended to be used in the 
+  New-Alarm function
+.NOTES
+  Source:  Automating vSphere Administration
+  Authors: Luc Dekens, Arnim van Lieshout, Jonathan Medd,
+           Alan Renouf, Glenn Sizemore
+.EXAMPLE
+  PS> New-AlarmActionMethod -Name "EnterMaintenanceMode_Task" `
+  >> -Arguments 0,$true 
+#>
+
+  param(
+  [string]$Name,
+  [parameter(ValueFromRemainingArguments=$true)]
+  [PSObject[]]$Arguments
+  )
+
+  New-Object PSObject -Property @{
+    Type = "Method"
+    Name = $Name
+    Argument = $Arguments
+  }
+}
+
+function New-AlarmActionScript{
+<#
+.SYNOPSIS
+  Create an object for an Alarm Script action
+.DESCRIPTION
+  The function will create an object that defines
+  a Script action.
+  The object is intended to be used in the 
+  New-Alarm function
+.NOTES
+  Source:  Automating vSphere Administration
+  Authors: Luc Dekens, Arnim van Lieshout, Jonathan Medd,
+           Alan Renouf, Glenn Sizemore
+.EXAMPLE
+  PS> New-AlarmActionScript -Path C:\test.bat 
+#>
+
+  param(
+  [string]$Path
+  )
+
+  New-Object PSObject -Property @{
+    Type = "Script"
+    Path = $Path
+  }
+}
+
+function New-AlarmActionTask{
+<#
+.SYNOPSIS
+  Create an object for an Alarm Task action
+.DESCRIPTION
+  The function will create an object that defines
+  a Task action.
+  The object is intended to be used in the 
+  New-Alarm function
+.NOTES
+  Source:  Automating vSphere Administration
+  Authors: Luc Dekens, Arnim van Lieshout, Jonathan Medd,
+           Alan Renouf, Glenn Sizemore
+.EXAMPLE
+  PS> New-AlarmActionTask `
+  >> -TaskId "com.vmware.vcIntegrity.StageTask" `
+  >> -Cancelable:$false
+#>
+
+  param(
+  [string]$TaskId,
+  [switch]$Cancelable = $false
+  )
+
+  New-Object PSObject -Property @{
+    Type = "Task"
+    TaskId = $TaskId
+    Cancelable = $cancelable
+  }
+}
+
+function New-AlarmTransition{
+<#
+.SYNOPSIS
+  Create an object for a Transition State
+.DESCRIPTION
+  The function will create an object that defines
+  a Transition State.
+  The object is intended to be used in the 
+  New-Alarm function
+.NOTES
+  Source:  Automating vSphere Administration
+  Authors: Luc Dekens, Arnim van Lieshout, Jonathan Medd,
+           Alan Renouf, Glenn Sizemore
+.EXAMPLE
+  PS> New-AlarmTransition -Start "green" `
+  >> -Final "yellow"
+#>
+  param(
+  [string]$Start,
+  [string]$Final,
+  [switch]$Repeat = $false
+  )
+
+  New-Object PSObject -Property @{
+    Start = $Start
+    Final = $Final
+    Repeat = $Repeat
+  }
+}
+
+function New-AlarmTriggerAction{
+  param(
+  [PSObject]$Action,
+  [PSObject]$Transition
+  )
+
+  $si = Get-View ServiceInstance
+  if($si.Content.About.ApiVersion -ge 4){
+    New-Object PSObject -Property @{
+      Action = $Action
+      Transition = $Transition
+      API = 4
+    }
+  }
+  else{
+    $Transition | %{
+      New-Variable -Name ($_.Start + "2" + $_.Final) -Value $true
+    }
+    New-Object PSObject -Property @{
+      Action = $Action
+      Green2Yellow = $green2yellow
+      Red2Yellow = $red2yellow
+      Yellow2Green = $yellow2green
+      Yellow2Red = $yellow2red
+      API = 2
+    } 
+  }
+}
+
+function New-AlarmExpressionOr{
+<#
+.SYNOPSIS
+  Create an object for an Or Expression
+.DESCRIPTION
+  The function will create an object that defines
+  an Or Expression.
+  The object is intended to be used in the 
+  New-Alarm function
+.NOTES
+  Source:  Automating vSphere Administration
+  Authors: Luc Dekens, Arnim van Lieshout, Jonathan Medd,
+           Alan Renouf, Glenn Sizemore
+.EXAMPLE
+  PS> New-AlarExpressionOr
+#>
+
+  New-Object PSObject -Property @{
+    Type = "or"
+  }
+}
+
+function New-AlarmExpressionAnd{
+<#
+.SYNOPSIS
+  Create an object for an And Expression
+.DESCRIPTION
+  The function will create an object that defines
+  an And Expression.
+  The object is intended to be used in the 
+  New-Alarm function
+.NOTES
+  Source:  Automating vSphere Administration
+  Authors: Luc Dekens, Arnim van Lieshout, Jonathan Medd,
+           Alan Renouf, Glenn Sizemore
+.EXAMPLE
+  PS> New-AlarExpressionAnd
+#>
+
+  New-Object PSObject -Property @{
+    Type = "and"
+  }
+}
+
+function New-AlarmExpressionEvent{
+<#
+.SYNOPSIS
+  Create an object for an Event Expression
+.DESCRIPTION
+  The function will create an object that defines
+  an Event Expression.
+  The object is intended to be used in the 
+  New-Alarm function
+.NOTES
+  Source:  Automating vSphere Administration
+  Authors: Luc Dekens, Arnim van Lieshout, Jonathan Medd,
+           Alan Renouf, Glenn Sizemore
+.EXAMPLE
+  PS> New-AlarExpressionEvent -Event "VmNetworkFailedEvent" `
+  >> -Object "VirtualMachine" -Status "red" `
+  >> -Comparison ("group","equal","xyz"),("number","equal","100")
+#>
+
+  param(
+  [string]$Event,
+  [string]$Object,
+  [string]$Status,
+  [string[]]$Comparison
+  )
+
+  function Get-AlarmEventTypeId{
+    param(
+    [string]$tgtEvent
+    )
+
+    $evtMgr = Get-View EventManager
+    foreach($event in $evtMgr.Description.EventInfo){
+      if($event.Key -eq $tgtEvent){
+        $typeId = "vim.event." + $Event.Key
+        $type = $Event.Key
+        break
+      }
+      elseif($event.FullFormat.Split("|")[0].Split('.')[-1] -eq $tgtEvent){
+        $typeId = $Event.FullFormat.Split("|")[0]
+        $type = "EventEx"
+        break
+      }
+    }
+
+    New-Object PSObject -Property @{
+      Comparisons = &{
+        if($comparison){
+          $comparison | %{
+            New-Object PSObject -Property @{
+              AttributeName = $_[0]
+              Operator = $_[1]
+              Value = $_[2]
+            }
+          }
+        }
+      }
+      EventType = $type
+      EventTypeId = $typeId
+      Object = $Object
+      Status = $Status
+    } 
+  }
+
+  $thisEvent = Get-AlarmEventTypeId $Event
+  New-Object PSObject -Property @{
+    Type = "Event"
+    Comparison = $Comparison
+    EventType = $thisEvent.EventType
+    EventTypeId = $thisEvent.EventTypeId
+    Object = $Object
+    Status = $Status
+  }
+}
+
+function New-AlarmExpressionMetric{
+<#
+.SYNOPSIS
+  Create an object for a Metric Expression
+.DESCRIPTION
+  The function will create an object that defines
+  a Metric Expression.
+  The object is intended to be used in the 
+  New-Alarm function
+.NOTES
+  Source:  Automating vSphere Administration
+  Authors: Luc Dekens, Arnim van Lieshout, Jonathan Medd,
+           Alan Renouf, Glenn Sizemore
+.EXAMPLE
+  PS> New-AlarExpressionMetric -Metric "cpu.usage.average" `
+  >> -Object "VirtualMachine" `
+  >> -Operator "isAbove" -RedValue 75 -RedInterval 60 `
+  >> -YellowValue 60 -YellowInterval 60
+#>  
+
+  param(
+  [string]$Metric,
+  [string]$Instance = "",
+  [string]$Object,
+  [ValidateSet("isabove","isbelow")]
+  [string]$Operator,
+  [int]$YellowValue = 0,
+  [int]$YellowInterval = 0,
+  [int]$RedValue = 0,
+  [int]$RedInterval = 0
+  )
+
+  New-Object PSObject -Property @{
+    Type = "Metric"
+    Metric = &{
+      $perfMgr = Get-View `
+        (Get-View ServiceInstance).Content.PerfManager
+      foreach($perf in $perfMgr.PerfCounter){
+        if(($perf.GroupInfo.Key + '.' + $perf.NameInfo.Key `
+          + '.' + $perf.RollupType) -eq $Metric){
+          $perf.Key
+          break
+        }
+      } 
+    }
+    Instance = $Instance
+    Object = $Object
+    Operator = $Operator
+    YellowValue = $YellowValue
+    YellowInterval = $YellowInterval
+    RedValue = $RedValue
+    RedInterval = $RedInterval
+  }
+}
+
+function New-AlarmExpressionState{
+<#
+.SYNOPSIS
+  Create an object for a State Expression
+.DESCRIPTION
+  The function will create an object that defines
+  a State Expression.
+  The object is intended to be used in the 
+  New-Alarm function
+.NOTES
+  Source:  Automating vSphere Administration
+  Authors: Luc Dekens, Arnim van Lieshout, Jonathan Medd,
+           Alan Renouf, Glenn Sizemore
+.EXAMPLE
+  PS> New-AlarExpressionState -StatePath "runtime.connectionState"`
+  >> -Object "HostSystem" -Operator "isEqual" -Yellow "connected"
+#>  
+
+  param(
+  [string]$StatePath,
+  [string]$Object,
+  [ValidateSet("isEqual","isUnequal")]
+  [string]$Operator,
+  $Yellow = $null,
+  $Red = $null
+  )
+
+  New-Object PSObject -Property @{
+    Type = "State"
+    StatePath = $StatePath
+    Object = $Object
+    Operator = $Operator
+    Yellow = $Yellow
+    Red = $Red
+  }
+}
+
+function New-Alarm{
+<#
+.SYNOPSIS
+  Create a new Alarm
+.DESCRIPTION
+  The function will create a new Alarm in the vCenter
+  Server. The parameters are objects created by the other
+  Alarm related functions
+.NOTES
+  Source:  Automating vSphere Administration
+  Authors: Luc Dekens, Arnim van Lieshout, Jonathan Medd,
+           Alan Renouf, Glenn Sizemore
+.EXAMPLE
+  PS> New-Alarm -Action $myActions -Expression $myExpr `
+  >> -Name “Alarm1” -Enabled
+#>
+
+  param(
+  [parameter(valuefrompipeline = $true)]
+  [PSObject]$Entity,
+  [string]$Name,
+  [string]$Description,
+  [PSObject[]]$Action,
+  [parameter(Mandatory=$true)]
+  [PSObject[]]$Expression,
+  [int]$ActionFrequency = 0,
+  [switch]$Enabled = $false,
+  [int]$ReportingFrequency = 0,
+  [int]$ToleranceRange = 0
+  )
+
+  $alarmMgr = Get-View AlarmManager
+  $spec = New-Object VMware.Vim.AlarmSpec
+
+  $spec.Name = $Name
+  $spec.Description = $Description
+  $spec.ActionFrequency = $ActionFrequency
+  $spec.Enabled = $Enabled
+
+  if($Action){
+    $group = New-Object VMware.Vim.GroupAlarmAction 
+    foreach($act in $Action){
+      $temp = New-Object VMware.Vim.AlarmTriggeringAction
+      switch($act.Action.Type){
+        "Snmp"{
+          $temp.Action = New-Object VMware.Vim.SendSNMPAction
+        }
+        "Mail"{
+          $temp.Action = New-Object VMware.Vim.SendEmailAction
+          $temp.Action.body = $act.Action.Body
+          $temp.Action.ccList = $act.Action.Cc
+          $temp.Action.subject = $act.Action.Subject
+          $temp.Action.toList = $act.Action.To
+        }
+        "Method"{
+          $temp.Action = New-Object VMware.Vim.MethodAction
+          $temp.Action.argument = &{
+            if($act.Action.Argument){
+              $act.Action.Argument | %{
+                New-Object `
+                  VMware.Vim.MethodActionArgument -Property @{Value = $_}
+              }
+            }
+          }
+          $temp.Action.name = $act.Action.Name
+        }
+        "Script"{
+          $temp.Action = New-Object VMware.Vim.RunScriptAction
+          $temp.Action.script = $act.Action.Path
+        }
+        "Task"{
+          $temp.Action = New-Object VMware.Vim.CreateTaskAction
+          $temp.Action.cancelable = $act.Action.Cancelable
+          $temp.Action.taskTypeId = $act.Action.TaskId
+        }
+      }
+      if($act.API -eq 4){
+        $temp.transitionSpecs = &{
+          if($act.Transition){
+            $act.Transition | %{
+              $trans = New-Object `
+                VMware.Vim.AlarmTriggeringActionTransitionSpec
+              $trans.startState = $_.Start
+              $trans.finalState = $_.Final
+              $trans.repeats = $_.Repeat
+              $trans
+            }
+          }
+        }
+      }
+      else{
+        $temp.green2yellow = $act.green2yellow
+        $temp.red2yellow = $act.red2yellow
+        $temp.yellow2green = $act.yellow2green
+        $temp.yellow2red = $act.yellow2red
+      }
+      $group.action += $temp
+    }
+    $spec.action = $group
+  }
+
+  foreach($expr in $Expression){
+    switch($expr.Type){
+      "event"{
+        $temp = New-Object VMware.Vim.EventAlarmExpression
+        if($expr.Comparison){
+          $expr.Comparison | %{
+            $comp = New-Object `
+              VMware.Vim.EventAlarmExpressionComparison
+            $comp.attributeName = $_.Split(' ')[0]
+            $comp.operator = $_.Split(' ')[1]
+            $comp.value = $_.Split(' ')[2]
+            $temp.Comparisons += $comp
+          }
+        }
+        $temp.eventType = $expr.EventType
+        $temp.eventTypeId = $expr.EventTypeId
+        $temp.objectType = $expr.Object
+        $temp.status = $expr.Status
+        $exprSpec.expression += $temp
+      }
+      "metric"{
+        $temp = New-Object VMware.Vim.MetricAlarmExpression
+        $temp.Metric = New-Object VMware.Vim.PerfMetricId
+        $temp.Metric.counterId = $expr.Metric
+        $temp.Metric.instance = $expr.Instance
+        $temp.operator = $expr.Operator
+        $temp.red = $expr.RedValue
+        $temp.redInterval = $expr.RedInterval
+        $temp.yellow = $expr.YellowValue
+        $temp.yellowInterval = $expr.YellowInterval
+        $temp.type = $expr.Object
+        $exprSpec.expression += $temp
+      }
+      "state"{
+        $temp = New-Object VMware.Vim.StateAlarmExpression
+        $temp.operator = $expr.Operator
+        if($expr.Red){
+          $temp.red = $expr.Red
+        }
+        $temp.statePath = $expr.StatePath
+        $temp.type = $expr.Object
+        if($expr.Yellow){
+          $temp.yellow = $expr.Yellow
+        }
+        $exprSpec.expression += $temp
+      }
+      Default{
+        $exprSpec = New-Object `
+          ('VMware.Vim.' + $expr.Type + 'AlarmExpression')
+      }
+    }
+    $spec.Expression = $exprSpec
+  }
+
+  $spec.Setting = New-Object VMware.Vim.AlarmSetting
+  $spec.Setting.reportingFrequency = $ReportingFrequency
+  $spec.Setting.toleranceRange = $ToleranceRange
+
+  $alarmMgr.CreateAlarm($Entity.Extensiondata.MoRef,$spec)
+}
+
+function Remove-Alarm{
+  <#
+.SYNOPSIS
+  Removes one or more alarms
+.DESCRIPTION
+  The function will remove all the alarms whose
+  name matches.
+.NOTES
+    Source:  Automating vSphere Administration
+    Authors: Luc Dekens, Arnim van Lieshout, Jonathan Medd,
+             Alan Renouf, Glenn Sizemore
+.EXAMPLE
+  PS> Remove-Alarm -Name "Book: My Alarm"
+.EXAMPLE
+  PS> Remove-Alarm -Name "Book:*"
+#>
+
+  param(
+  [string]$Name
+  )
+  
+  process{
+    $alarmMgr = Get-View AlarmManager
+    $alarmMgr.GetAlarm($null) | %{
+      $alarm = Get-View $_
+      if($alarm.Info.Name -like $Name){
+        $alarm.RemoveAlarm()
+      }
+    }
+  }
+}

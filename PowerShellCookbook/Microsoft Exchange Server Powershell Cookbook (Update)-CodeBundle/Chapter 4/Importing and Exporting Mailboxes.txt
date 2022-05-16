@@ -1,0 +1,64 @@
+Example 1:
+
+New-ManagementRoleAssignment –Role “Mailbox Import Export” `
+-User administrator
+
+New-MailboxExportRequest –Mailbox testuser `
+–Filepath \\contoso-ex01\export\testuser.pst
+
+
+Example 2:
+
+New-MailboxExportRequest -Mailbox testuser `
+-IncludeFolders "Sent Items" `
+-FilePath \\contoso-ex01\export\testuser_sent.pst `
+-ExcludeDumpster
+
+
+Example 3:
+
+New-MailboxExportRequest -Mailbox testuser `
+-ContentFilter {Received -lt "01/01/2014"} `
+-FilePath \\contoso-ex01\export\testuser_archive.pst `
+-ExcludeDumpster `
+-IsArchive
+
+
+Example 4:
+
+Get-MailboxExportRequest -Mailbox testuser -Status Failed
+
+
+Example 5:
+
+foreach($i in Get-MailboxExportRequest) {
+  Get-MailboxExportRequestStatistics $i | 
+      select-object SourceAlias,Status,PercentComplete
+}
+
+
+Example 6:
+
+New-MailboxImportRequest -Mailbox sysadmin `
+-TargetRootFolder "Recover" `
+-FilePath \\contoso-ex01\export\testuser_sent.pst
+
+
+Example 7:
+
+param($Path, $BatchName)
+  foreach($i in Get-Mailbox -ResultSize Unlimited) {
+    $filepath = Join-Path -Path $Path -ChildPath "$($i.alias).pst"
+    New-MailboxExportRequest -Mailbox $i `
+    -FilePath $filepath `
+    -BatchName $BatchName
+}
+
+
+
+$batch = "Export for (Get-Date).ToShortDateString()"
+.\Export.ps1 -Path \\contoso\ex01\export -BatchName $batch
+
+Get-MailboxExportRequestStatistics | 
+  ?{$_.BatchName -eq "Export for 2/1/2015"} | 
+      select SourceAlias,Status,PercentComplete

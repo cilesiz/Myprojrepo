@@ -1,0 +1,74 @@
+Example 1:
+
+New-MoveRequest –Identity testuser –TargetDatabase DB2
+
+
+Example 2:
+
+Get-Mailbox -Database DB1 | New-MoveRequest –TargetDatabase DB2
+
+
+Example 3:
+
+Get-MoveRequest | 
+  ?{$_.Status -ne ‘Completed’} | 
+    Get-MoveRequestStatistics | 
+	 select DisplayName,PercentComplete,BytesTransferred
+
+Example 4:
+
+while($true) {
+  Get-MoveRequest | ?{$_.Status -ne 'Completed'}
+  Start-Sleep 5
+  Clear-Host
+}
+
+
+Example 5:
+
+Remove-MoveRequest -Identity testuser -Confirm:$false
+
+
+Example 6:
+
+Get-MoveRequest | Remove-MoveRequest -Confirm:$false
+
+
+Example 7:
+
+New-MoveRequest testuser -TargetDatabase DB2
+
+
+Example 8:
+
+New-MoveRequest testuser -TargetDatabase DB2 -PrimaryOnly
+
+
+Example 9:
+
+New-MoveRequest testuser -ArchiveOnly -ArchiveTargetDatabase DB2
+
+
+Example 10:
+
+$mailboxes = Get-Mailbox `
+  -RecipientTypeDetails UserMailbox `
+  -Database DB1 |
+    Get-MailboxStatistics | 
+      ?{$_.TotalItemSize -gt 2gb}
+
+$mailboxes | %{
+  New-MoveRequest -Identity $_.Alias `
+  -BatchName 'Large Mailboxes' `
+  -TargetDatabase DB2
+}
+
+Get-MoveRequest -BatchName ‘Large Mailboxes’
+
+
+Example 11:
+
+New-MoveRequest -Identity testuser `
+-BadItemLimit 100 `
+-AcceptLargeDataLoss `
+-TargetDatabase DB2

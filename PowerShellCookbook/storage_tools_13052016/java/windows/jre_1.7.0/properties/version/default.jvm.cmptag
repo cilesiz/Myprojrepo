@@ -1,0 +1,24 @@
+<Component>
+	<ComponentName>IBM Java-Virtual Machine</ComponentName>
+	<ComponentVersion>2.6.0</ComponentVersion>
+	<BuildLevel>20130617_152572</BuildLevel>
+	<SWGFMIDX>JIJMAC260</SWGFMIDX>
+	<SubComponents>
+		<SubComponent> 
+			<SubComponentName>IBM Java - Virtual Machine</SubComponentName> 
+			<SubComponentVersion>R26_Java726_SR5_20130617_1436_B152572</SubComponentVersion> 
+		</SubComponent> 
+		<SubComponent> 
+			<SubComponentName>IBM Java - Garbage Collector</SubComponentName> 
+			<SubComponentVersion>R26_Java726_SR5_20130617_1436_B152572</SubComponentVersion> 
+		</SubComponent> 
+		<SubComponent> 
+			<SubComponentName>IBM Java - Kernel Class Library</SubComponentName> 
+			<SubComponentVersion>R26_Java726_SR5_20130617_1436_B152572</SubComponentVersion> 
+		</SubComponent> 
+		<SubComponent> 
+			<SubComponentName>IBM Java - Just In Time Compiler</SubComponentName> 
+			<SubComponentVersion>r11.b04_20130528_38954ifx1</SubComponentVersion> 
+		</SubComponent> 
+	</SubComponents> 
+</Component>

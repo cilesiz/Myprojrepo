@@ -1,0 +1,22 @@
+Example 1:
+
+New-ManagementRoleAssignment –Role “Mailbox Import Export” `
+-User administrator
+
+
+Example 2:
+
+Search-Mailbox -Identity testuser `
+-SearchQuery "subject:'Expense Report'" `
+-TargetMailbox restoremailbox `
+-TargetFolder "Test Restore" `
+-SearchDumpsterOnly
+
+
+Example 3:
+
+Search-Mailbox -Identity testuser `
+-SearchQuery "received:>2/5/2015" `
+-TargetMailbox administrator `
+-TargetFolder "Testuser Restore" `
+-SearchDumpsterOnly

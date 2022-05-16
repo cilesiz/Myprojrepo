@@ -1,0 +1,1 @@
+Get-ADUser -filter * -Properties * | Select name,PasswordLastSet | Export-csv C:\ADusers.csv

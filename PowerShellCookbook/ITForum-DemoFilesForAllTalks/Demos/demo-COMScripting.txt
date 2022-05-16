@@ -1,0 +1,10 @@
+# WORKING WITH COM
+$ie = New-Object -COM InternetExplorer.Application
+$ie.Navigate2("http://amazon.com/s/ref=nb_ss_gw/104-0879233-0922327?initialSearch=1&url=search-alias%3Dstripbooks&field-keywords=powershell&Go.x=5&Go.y=10")
+#$ie.Navigate2("blogs.msdn.com/PowerShell")
+$ie
+$ie.Visible = $True
+$ie |fl *
+$ie.statusbar = $false
+$ie.TheaterMode=$True
+$ie.Quit()

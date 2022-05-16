@@ -1,0 +1,593 @@
+# Listing 12.1: Implementing Guideline VMX01
+# Set up the VirtualMachineConfigSpec object
+$vmConfigSpec = New-Object VMware.Vim.VirtualMachineConfigSpec
+$option1 = New-Object VMware.Vim.optionvalue
+$option1.Key = "isolation.tools.diskShrink.disable"
+$option1.Value = "TRUE"
+$vmConfigSpec.ExtraConfig += $option1
+
+$option2 = New-Object VMware.Vim.optionvalue
+$option2.Key = "isolation.tools.diskWiper.disable"
+$option2.Value = "TRUE"
+$vmConfigSpec.ExtraConfig += $option2
+
+# Loop through all Virtual Machines
+Get-VM | %{
+  $_.Extensiondata.ReconfigVM($vmConfigSpec)
+}
+
+# Listing 12.2: Reporting and Remediating Guideline VMX01
+function Assert-VMX01{
+  param(
+  [parameter(valuefrompipeline = $true)]
+  [ValidateNotNullOrEmpty()]
+  [PSObject]$Entity,
+  [switch]$Report = $true,
+  [switch]$Remediate = $false
+  )
+
+  begin{
+    $keys = "isolation.tools.diskShrink.disable",
+            "isolation.tools.diskWiper.disable"
+    $values = "TRUE",
+              "TRUE"
+  
+    if($Remediate){
+# Set up the VirtualMachineConfigSpec object
+      $vmConfigSpec = `
+        New-Object VMware.Vim.VirtualMachineConfigSpec
+
+      0..($keys.Count - 1) | %{
+        $option = New-Object VMware.Vim.optionvalue
+        $option.Key = $keys[$_]
+        $option.Value = $values[$_]
+        $vmConfigSpec.ExtraConfig += $option
+      }
+    }
+  }
+  
+  process{
+    if($Entity.GetType().Name -eq "String"){
+      $object = Get-VM -Name $Entity
+    }
+    else{
+      $object = $Entity
+    }
+    if($Remediate){
+      $object.Extensiondata.ReconfigVM($vmConfigSpec)
+    }
+    if($Report){
+      $vmxEntries = @{}
+      $object.ExtensionData.Config.ExtraConfig | %{
+        $vmxEntries[$_.Key] = $_.Value
+      }
+      $compliant = $true
+      0..($keys.Count - 1) | %{
+        $key = $keys[$_]
+        if($vmxEntries.ContainsKey($key)){
+          $compliant = $compliant -and `
+            ($vmxEntries[$key] -eq $values[$_])
+        }
+        else{
+          $compliant = $false
+        }
+      }
+      New-Object PSObject -Property @{
+        Name = $object.Name
+        Compliant = $compliant
+      }
+    }
+  }
+}
+
+# Listing 12.3: Find independent-nonpersistent vDisks for VMX022
+foreach($vm in Get-VM){
+  $vm.Extensiondata.Config.Hardware.Device | `
+  where {$_.DeviceInfo.Label -like "Hard disk*"} | `
+  Select @{N="VMname";E={$vm.Name}},
+    @{N="HD";E={$_.DeviceInfo.Label}},
+    @{N="Mode";E={$_.Backing.DiskMode}}
+}
+
+# Listing 12.4: Change independent-nonpersistent vDisks for VMX022
+$tgtMode = "IndependentPersistent"
+
+foreach($vm in Get-VM){
+  foreach($hd in (Get-HardDisk -VM $vm | `
+    where{$_.Persistence -eq "IndependentNonPersistent"})){
+    if(Get-Snapshot -VM $vm){
+      Write-Host $vm.Name "has snapshot(s). Can't convert" `
+        $hd.Name "to" $tgtMode 
+    }
+    else{
+      Set-HardDisk -HardDisk $hd -Persistence $tgtMode -Confirm:$false
+    }
+  }
+}
+
+# Listing 12.5: Check HBA CHAP authentication for HST01
+Get-VMHost | `
+Get-VMHostHba -Type ISCSI | `
+where {$_.AuthenticationProperties.ChapType -ne "Required"} | `
+Select Device,
+  @{N="CHAPType";E={$_.AuthenticationProperties.ChapType}}
+
+# Listing 12.6: Check Target CHAP authentication for HST01
+Get-VMHost | `
+Get-VMHostHba -Type ISCSI | `
+Get-IScsiHbaTarget | `
+where {$_.AuthenticationProperties.ChapType -ne "Required"} | `
+Select Name,Type,IScsiHbaName,
+  @{N="CHAPType";E={$_.AuthenticationProperties.ChapType}}
+
+# Listing 12.7: Get-IScsiHbaTargets function
+function Get-IScsiHbaTargets{
+<#
+.SYNOPSIS
+  Returns the iScsi targets
+.DESCRIPTION
+  The function returns all the iScsi targets of the
+  requested Type for one or more iScsi HBAs
+.PARAMETER IScsiHba
+  The iScsi HBA(s) for which you want to retrieve the 
+  targets
+.PARAMETER Type
+  The type of iScsi HBA targets you want to retrieve.
+  The valid values are Send and Static
+.NOTES
+  Source:  Automating vSphere Administration
+  Authors: Luc Dekens, Arnim van Lieshout, Jonathan Medd,
+           Alan Renouf, Glenn Sizemore.PARAMETER SqlServer
+.EXAMPLE
+  PS> Get-IScsiHbaTargets -IScsiHba $hba -Type Static
+.EXAMPLE
+  PS> Get-VMHost MyESX | `
+  >> Get-VMHostHba -Type IScsi | `
+  >> Get-IScsiHbaTargets
+#>
+
+  param(
+  [Parameter(Position=1,ValueFromPipeline=$true)]
+  [VMware.VimAutomation.ViCore.Types.V1.Host.Storage.IScsiHba[]]
+  ${IScsiHba},
+  [ValidateNotNullOrEmpty()]
+  [VMware.VimAutomation.ViCore.Types.V1.Host.Storage.IScsiHbaTargetType[]]
+  ${Type}
+  )
+
+  begin{}
+
+  process{
+    foreach($hba in $IScsiHba){
+      if(!$Type -or $Type -contains "Send"){
+        foreach($target in 
+    $hba.Extensiondata.ConfiguredSendTarget){
+          $target | Select Address,Port,
+          @{N="IScsiHbaKey";E={$hba.Key}},
+          @{N="CHAPType";E={$temp = $target.AuthenticationProperties.ChapAuthenticationType; $temp.Replace("chap","Chap:")}},
+          @{N="CHAPEnabled";E={$target.AuthenticationProperties.ChapAuthEnabled}},
+          @{N="CHAPInherited";E={$target.AuthenticationProperties.ChapInherited}},
+          @{N="mutualCHAPType";E={$temp = $target.AuthenticationProperties.MutualChapAuthenticationType; $temp.Replace("chap","Chap:")}},
+          @{N="mutualCHAPInherited";E={$temp = $target.AuthenticationProperties.MutualChapInherited}},
+          @{N="Type";E={"Send"}},
+          @{N="Uid";E={$hba.Uid + "/IScsiHbaTarget=" + $target.Address + ":" + $target.Port + ":Send/"}},
+          @{N="Name";E={$target.Address + ":" + $target.Port}},
+          @{N="IScsiHbaName";E={$hba.IScsiName}}
+        }
+      }
+      if(!$Type -or $Type -contains "Static"){
+        foreach($static in 
+        $hba.Extensiondata.ConfiguredStaticTarget){
+          $static | Select IScsiName,Address,Port,
+          @{N="IScsiHbaKey";E={$hba.Key}},
+          @{N="CHAPType";E={$temp = $static.AuthenticationProperties.ChapAuthenticationType; $temp.Replace("chap","Chap:")}},
+          @{N="CHAPEnabled";E={$static.AuthenticationProperties.ChapAuthEnabled}},
+          @{N="CHAPInherited";E={$static.AuthenticationProperties.ChapInherited}},
+          @{N="mutualCHAPType";E={$temp = $static.AuthenticationProperties.MutualChapAuthenticationType; $temp.Replace("chap","Chap:")}},
+          @{N="mutualCHAPInherited";E={$static.AuthenticationProperties.MutualChapInherited}},
+          @{N="Type";E={"Static"}},
+          @{N="Uid";E={$hba.Uid + "/IScsiHbaTarget=" + $static.Address + ":" + $static.Port + ":Static/"}},
+          @{N="Name";E={$static.Address + ":" + $static.Port}},
+          @{N="IScsiHbaName";E={$hba.IScsiName}}
+        }
+      }
+    } 
+  }
+}
+
+# Listing 12.8: Set up HBA CHAP authentication for HST01
+foreach($esx in Get-VMHost){
+  $iHBA = Get-VMHostHba -VMHost $esx -Type ISCSI | `
+  where {$_.AuthenticationProperties.ChapType -ne "Required"}
+  
+  if($iHBA){
+    $iHBA | Set-VMHostHba `
+      -ChapType "Required" -ChapName "targetname" `
+        -ChapPassword "secret123456" `
+      -MutualChapEnabled:$true -MutualChapName "mutualname" `
+        -MutualChapPassword "secret654321"
+    Get-VMHostStorage -VMHost $esx -RescanAllHba
+  }
+}
+
+# Listing 12.9: Set up Target CHAP authentication for HST01
+foreach($esx in Get-VMHost){
+  $iTgt = Get-VMHostHba -VMHost $esx -Type ISCSI | `
+  Get-IScsiHbaTarget -Type Send | `
+  where {$_.AuthenticationProperties.ChapType -ne "Required"}
+  
+  if($iTgt){
+    $iTgt | Set-IScsiHbaTarget `
+    -ChapType "Required" -ChapName "targetname" `
+    -ChapPassword "secret123456" `
+      -MutualChapEnabled:$true -MutualChapName "mutualname" `
+    -MutualChapPassword "secret654321"
+    Get-VMHostStorage -VMHost $esx -RescanAllHba
+  }
+}
+
+# Listing 12.10: Check vSphere Web Access for HCM03
+foreach($esx in (Get-VMHost | where {$_.Extensiondata.Config.Product.ProductLineId -eq "esx"})){
+  Get-VMHostFirewallException -VMHost $esx -Name "vSphere Web Access" | `
+  Select @{N="Hostname";E={$esx.Name}},Name,Enabled
+}
+
+# Listing 12.11: Disable vSphere Web Access for HCM03
+Get-VMHost | `
+  where {$_.Extensiondata.Config.Product.ProductLineId -eq "esx"} | `
+  Get-VMHostFirewallException -Name "vSphere Web Access"} | `
+  Set-VMHostFirewallException -Enabled:$false
+
+# Listing 12.12: Retrieve and Save the proxy.xml file  
+# Update the following paths to reflect
+# your local installation
+$PuTTY = "C:\PuTTY"
+$GnuWin = "C:\Program Files (x86)\GnuWin32\bin"
+
+$pscp = $PuTTY + "\pscp.exe"
+$GnuGzip = $GnuWin + "\gzip.exe"
+$GnuTar = $GnuWin + "\tar.exe"
+
+# Executes a command without opening a Command box
+function Invoke-CmdHidden{
+  param(
+  [string]$Executable,
+  [string]$Parameters,
+  [string]$WorkDirectory
+  )
+  
+  process{
+    $startInfo = New-Object System.Diagnostics.ProcessStartInfo
+    $startInfo.CreateNoWindow = $true
+    $startInfo.WindowStyle = "hidden"
+    $startInfo.UseShellExecute = $false
+    $startInfo.FileName = $Executable
+    $startInfo.Arguments = $Parameters
+    $startInfo.WorkingDirectory = $WorkDirectory
+    $process = [System.Diagnostics.Process]::Start($startInfo)
+    if(!$process.HasExited){$process.WaitForExit()}
+  }
+}
+
+# Retrieve a file through pscp
+function Get-FileScp{
+  param(
+  [string]$Hostname,  
+  [string]$SourcePath,
+  [string]$Destination,
+  [System.Management.Automation.PSCredential]$Credential
+  )
+
+  process{
+    $txt = $Credential.GetNetworkCredential()
+    $user = $txt.UserName
+    $pswd = $txt.Password
+    $PscpParams = "-batch -pw " + $pswd + " " + `
+      $user + "@" + $Hostname + ":" + $SourcePath + " ."
+    Invoke-CmdHidden -Executable $pscp `
+      -Parameters $PscpParams -WorkDirectory $Destination
+  } 
+}
+
+# Deflate a .tgz file
+function Expand-Tgz{
+  param(
+  [string]$TgzName
+  )
+
+  process{
+    $TgzFileName = Split-Path $TgzName -Leaf
+    $TarFileName = $TgzFileName.Replace('.tgz','.tar')
+    $Directory = Split-Path $TgzName
+    
+    $GnuTgzParams = "-d " + '"' + $TgzFileName + '"'
+    $GnuTarParams = "xf " + '"' + $TarFileName + '"'
+
+# Expand the GZIP file
+    Invoke-CmdHidden -Executable $GnuGzip `
+      -Parameters $GnuTgzParams -WorkDirectory $Directory
+# Create the .tgz file
+    Invoke-CmdHidden -Executable $GnuTar `
+      -Parameters $GnuTarParams -WorkDirectory $Directory
+  }
+}
+
+# Create a .tgz file from 1 or more files
+function Compress-Tgz{
+  param(
+  [string]$TgzName,
+  [string[]]$Files
+  )
+
+  process{
+    $TarName = $TgzName.Replace('.tgz','.tar')
+    $TgzFileName = Split-Path $TgzName -Leaf
+    $TarFileName = Split-Path $TarName -Leaf
+    $Directory = Split-Path $TgzName
+
+    if (Test-Path $TgzName) {
+      Remove-Item -Path $TgzName -Force
+    }
+    if (Test-Path $TarName) {
+      Remove-Item -Path $TarName -Force
+    }
+    $GnuTgzParams = "-1 " + '"' + $TarFileName + '"'
+
+# Create the .tar file
+    $FirstFile = $true
+    $Files | %{
+      if($FirstFile){
+        $GnuTarParams = "-cvvf " + '"' + `
+          $TarFileName + '"' + " " + '"' + $_ + '"'
+      }
+      else{
+        $GnuTarParams = "-rvvf " + '"' + `
+          $TarFileName + '"' + " " + '"' + $_ + '"'
+      }
+      Invoke-CmdHidden -Executable $GnuTar `
+        -Parameters $GnuTarParams `
+        -WorkDirectory $Directory
+      $FirstFile = $false
+    }
+# Create the .tgz file
+    Invoke-CmdHidden -Executable $GnuGzip `
+      -Parameters $GnuTgzParams -WorkDirectory $Directory
+    Get-ChildItem -Path $Directory -Filter "*.tar.gz" | `
+      Rename-Item -NewName $TgzFileName
+    if (Test-Path $TarName) {
+      Remove-Item -Path $TarName -Force
+    }
+  }
+}
+
+# Retrieve the proxy.xml file
+function Get-ProxyXml{
+  param(
+  [Parameter(Position=1,ValueFromPipeline=$true)]
+  [Alias('Host')]
+  [ValidateNotNull()]
+  [VMware.VimAutomation.ViCore.Types.V1.Inventory.VMHost]
+  ${VMHost},
+  [System.Management.Automation.PSCredential]$Credential
+  )
+  process{
+    $workFolder = $env:temp + "\" + $VMHost.Name
+    if (Test-Path $workFolder) {
+      Remove-Item -Path $workFolder -Force -Recurse
+    }
+    New-Item -Path ($env:temp + "\" + $VMHost.Name) `
+      -ItemType directory -Confirm:$false | Out-Null
+
+    $esxType = $VMHost.Extensiondata.Config.Product.ProductLineId
+    if($esxType -eq "embeddedEsx"){
+      $bundle = Set-VMHostFirmware -VMHost $VMHost `
+        -DestinationPath $workFolder -BackupConfiguration
+      Copy-Item -LiteralPath $bundle.Data.FullName `
+        -Destination $bundle.Data.FullName.Replace(".tgz",".copy.tgz")
+      Expand-Tgz -TgzName $bundle.Data.FullName
+
+      $stateTgz = $workFolder + "\state.tgz"
+      Expand-Tgz -TgzName $stateTgz
+
+      $localTgz = $workFolder + "\local.tgz"
+      Expand-Tgz -TgzName $localTgz
+      $proxyLocation = $workFolder + "\etc\vmware\hostd\proxy.xml" 
+    }
+    else{
+      $proxyXml = Get-FileScp -HostName $VMHost.Name `
+        -SourcePath "/etc/vmware/hostd/proxy.xml" `
+        -Destination $workFolder `
+        -Credential $Credential
+      $proxyLocation = $workFolder + "\proxy.xml" 
+    }
+    
+    $proxyXml = New-Object XML
+    $proxyXml.Load($proxyLocation)
+    $proxyXml
+  }
+}
+
+# Save the proxy.xml file
+function Set-ProxyXml{
+  param(
+  [Alias('Host')]
+  [ValidateNotNull()]
+  [VMware.VimAutomation.ViCore.Types.V1.Inventory.VMHost]
+  ${VMHost},
+  [System.Xml.XmlDocument]$InputObject,
+  [System.Management.Automation.PSCredential]$Credential
+  )
+
+  process{
+    $esxType = $VMHost.Extensiondata.Config.Product.ProductLineId
+    if($esxType -eq "embeddedEsx"){
+      $workFolder = $env:temp + "\" + $VMHost.Name
+      $InputObject.Save($workFolder + "\etc\vmware\hostd\proxy.xml")
+
+      $localTgz = $workFolder + "\local.tgz"
+      Compress-Tgz -TgzName $localTgz -Files ("etc")
+
+      $stateTgz = $workFolder + "\state.tgz"
+      Compress-Tgz -TgzName $stateTgz -Files ("local.tgz")
+
+      $bundleName = (Get-ChildItem -Path $workFolder -Filter "configBundle*tgz").FullName.Replace(".copy","")
+      Compress-Tgz -TgzName $bundleName `
+        -Files ("state.tgz","Manifest.txt")
+
+      Set-VMHostFirmware -Restore -SourcePath $bundleName `
+        -VMHost $VMHost `
+        -HostCredential $Credential -Confirm:$true
+      Remove-Item -Path $workFolder -Force -Recurse
+    }
+    else{
+      Set-FileScp -HostName $VMHost.Name `
+        -SourcePath "/etc/vmware/hostd/proxy.xml" `
+        -Destination $workFolder `
+        -Credential $Credential
+    }
+  }
+}
+
+# Listing 12.13: Report session encryption settings for HCM04
+$credentials = Get-Credential
+
+foreach($esx in Get-VMHost){
+  $proxy = Get-ProxyXml -VMHost $esx -Credential $credentials
+  $proxy.ConfigRoot.EndpointList.e | `
+    Select @{N=”Host”;E={$esx.Name}},accessMode,Port
+}
+
+# Listing 12.14: Configure encrypted sessions for HCM04
+$credentials = Get-Credential
+
+foreach($esx in Get-VMHost){
+  $proxy = Get-ProxyXml -VMHost $esx -Credential $credentials
+  $proxy.ConfigRoot.EndpointList.e | %{
+    $_.accessMode = "httpsOnly"
+    if($_.Port){
+      $_.Port = [string]-1
+    }
+  }
+  Set-ProxyXml -VMHost $esx -InputObject $proxy `
+    -Credential $credentials 
+}
+
+# Listing 12.15: Report Access Rights to DCUI for HCN01
+Get-VMHostAccount -Group | `
+  where {$_.Id -eq "localadmin"} | `
+  Select -ExpandProperty Users
+
+# Listing 12.16: Configure Access Rights to DCUI for HCN01  
+$removeUsers = “user1”,”user2”
+Get-VMHostAccount -Group | `
+  where {$_.Id -eq "localadmin"} | `
+  Set-VMHostAccount -UnassignUsers $removeUsers
+
+# Listing 12.17: Check Lockdown Mode for HCN02
+Get-VMHost | Select Name,
+  @{N="Lockdown";E={$_.Extensiondata.Config.adminDisabled}}
+
+# Listing 12.18: Configure Lockdown Mode  for HCN02
+Get-VMHost | `
+  where {$_.Extensiondata.Config.Product.ProductLineId -eq "embeddedEsx"} | %{
+    $_.ExtensionData.EnterLockdownMode()
+  }
+
+# Listing 12.19: Display Management portgroups
+function Assert-NAR01{
+  param(
+  [VMware.VimAutomation.ViCore.Impl.V1.Inventory.VMHostImpl]
+  $VMHost
+  )
+
+  if($VMHost.Extensiondata.Config.Product.ProductLineId -eq "esx"){
+    $nics = Get-VMHostNetworkAdapter -Console -VMHost $VMHost
+  }
+  else{
+    $nics = Get-VMHostNetworkAdapter -VMKernel -VMHost $VMHost
+  }
+
+  foreach($vmk in $nics){
+    if($vmk.Extensiondata.Spec.DistributedVirtualPort){
+      Get-VirtualPortGroup -Name $vmk.PortGroupName -Distributed | `
+      Select @{N="Server";E={$esx.Name}},
+      @{N="PgName";E={$vmk.PortGroupName}},
+      VLanId,@{N="vSwitch";E={$_.VirtualSwitch.Name}},
+      @{N="Pg-on-vSwitch";
+        E={(Get-VirtualPortGroup `
+          -VirtualSwitch (Get-VirtualSwitch `
+          -Name $_.VirtualSwitch.Name -VMHost $VMHost)).Count}}
+    }
+    else{
+      Get-VirtualPortGroup -Name $vmk.PortGroupName -VMHost $esx | `
+      Select @{N="Server";E={$esx.Name}},
+      @{N="PgName";E={$vmk.PortGroupName}},
+      VLanId,@{N="vSwitch";E={$_.VirtualSwitchName}},
+      @{N="Pg-on-vSwitch";
+        E={(Get-VirtualPortGroup `
+          -VirtualSwitch (Get-VirtualSwitch `
+          -Name $_.VirtualSwitchName -VMHost $VMHost)).Count}}
+    }
+  }
+}
+
+# Listing 12.20: Display MAC Address Change policy
+function Assert-NCN03{ 
+  param( 
+  [VMware.VimAutomation.ViCore.Impl.V1.Inventory.VMHostImpl] 
+  $VMHost 
+  ) 
+  process{ 
+    foreach($sw in Get-VirtualSwitch -VMHost $VMHost){ 
+      $swType = $sw.Extensiondata.GetType().Name
+      $ext = $sw.Extensiondata
+      if($swType -eq "HostVirtualSwitch"){ 
+        $sw | Select @{N="VMHost";E={$VMHost.Name}}, 
+        Name, 
+        @{N="MAC Change Allowed";
+     E={$ext.Spec.Policy.Security.MacChanges}} 
+      } 
+      else{ 
+        $sw | Select @{N="VMHost";E={$VMHost.Name}}, 
+        Name, 
+        @{N="MAC Change Allowed";E={E={$ext.Config.DefaultPortConfig.SecurityPolicy.MacChanges.Value}}
+      } 
+    } 
+  } 
+}
+
+# Listing 12.21: Set  MAC Address Change policy to Reject
+function Remediate-NCN03{ 
+  param( 
+  [VMware.VimAutomation.ViCore.Impl.V1.Inventory.VMHostImpl] 
+  $VMHost 
+  ) 
+  process{ 
+    $netSys = Get-View $VMhost.ExtensionData.ConfigManager.NetworkSystem 
+    foreach($sw in Get-VirtualSwitch -VMHost $vmhost){ 
+      $swType = $sw.Extensiondata.GetType().Name 
+      $ext = $sw.ExtensionData 
+      if($swType -eq "HostVirtualSwitch"){ 
+        $spec = New-Object VMware.Vim.HostVirtualSwitchSpec 
+        $spec.Bridge = $ext.Spec.Bridge 
+        $spec.Mtu = $ext.SPec.Mtu 
+        $spec.numPorts = $sw.NumPorts 
+        $spec.Policy = $ext.Spec.Policy 
+        $spec.Policy.Security.macChanges = $false 
+        $netSys.UpdateVirtualSwitch($sw.Name,$spec) 
+      } 
+      else{ 
+        $dvSw = Get-View $sw.Id 
+        $spec = New-Object VMware.Vim.DVSConfigSpec 
+        $spec.configVersion = $dvSw.Config.ConfigVersion 
+        $spec.defaultPortConfig = New-Object VMware.Vim.VMwareDVSPortSetting 
+        $spec.defaultPortConfig.securityPolicy = New-Object VMware.Vim.DVSSecurityPolicy 
+        $spec.defaultPortConfig.securityPolicy.macChanges = New-Object VMware.Vim.BoolPolicy 
+        $spec.defaultPortConfig.securityPolicy.macChanges.value = $false 
+        $dvSw.ReconfigureDvs($spec) 
+      } 
+    } 
+  } 
+}
+
+

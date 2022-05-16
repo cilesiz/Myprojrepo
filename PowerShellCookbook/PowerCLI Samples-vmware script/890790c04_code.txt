@@ -1,0 +1,944 @@
+################################################################
+# Listing 4.1: Creating a new vDS
+################################################################
+$Datacenter = Get-Datacenter -Name ‘PROD01’
+New-DistributedSwitch -Name PROD01-vDS01 `
+-Datacenter $Datacenter `
+-NumberOfUplinks 4
+
+# Listing 4.2: Creating a new DVPG
+
+New-DistributedSwitchPortGroup -Name dvPG01 `
+    -NumberOfPorts 128 `
+    -VLAN 42 `
+    -DistributedSwitch 'PROD01-vDS01'
+
+# Listing 4.3: Provition a complete vDS
+#Create and configure our new vDS
+$vDS = Get-Datacenter -name ‘ATL-PROD’| 
+    New-DistributedSwitch -Name 'vDS01' `
+        -NumberOfUplinks 6 |
+        Set-DistributedSwitch -LinkDiscoveryProtocol 'cdp' `
+            -LinkDiscoveryOperation 'both' `
+            -ContactName 'Glenn Sizemore' `
+            -ContactInfo 'Glenn.Sizemore@mailinator.com' `
+            -Description 'Atlanta Datacenter Production vSwitch'
+# a regulare DVPG
+$vDS | New-DistributedSwitchPortGroup -Name 'vDS01-VLAN22' `
+		-VLAN 22 |
+    Set-DistributedSwitchPortGroup -NumberOfPorts 256 `
+        -PromiscuousMode $false `
+        -MacAddressChanges $False `
+        -ForgedTransmits $false `
+        -LoadBalancing 'loadbalance_loadbased' `
+        -ActiveDVUplinks DVUplink2,DVUplink3,DVUplink5,DVUplink6
+# Trunked DVPG
+$vDS | New-DistributedSwitchPortGroup -Name 'vDS01-Trunk01' `
+    -VLANTrunkRange '7,19,25-28' |
+    Set-DistributedSwitchPortGroup -NumberOfPorts 128 `
+        -LoadBalancing 'loadbalance_loadbased' `
+        -ActiveDVUplinks DVUplink2,DVUplink3,DVUplink5,DVUplink6
+# Private VLAN
+$vDS | New-DistributedSwitchPrivateVLAN -PrimaryVLanID 108 |
+    New-DistributedSwitchPortGroup -Name 'vDS01-10.10.10.0' `
+		-PrivateVLAN 108|
+    Set-DistributedSwitchPortGroup -NumberOfPorts 128 `
+        -ActiveDVUplinks DVUplink1,DVUplink4
+
+		
+# Listing 4.4: Find vDS VMHost candidates
+
+[vSphere PowerCLI] C:\> Get-Datacenter -Name ‘ATL-PROD’ |
+    Get-DistributedSwitchCandidate -DistributedSwitch vDS01
+
+Name            State      PowerState      Id CpuUsage CpuTotal 
+                                                   Mhz      Mhz 
+----            -----      ----------      -- -------- -------- 
+vsphere01.ge... Connected  PoweredOn  ...-102       42     5338 
+vsphere02.ge... Connected  PoweredOn  ...-104       77     5338 
+
+# Listing 4.5: Get-VMHostPnic Function
+
+Function Get-VMHostPnic 
+{
+    <#
+    .SYNOPSIS
+        Get the current switch assignments for the Pnics on a 
+		given VMHost
+    .DESCRIPTION
+        Get the current switch assignments for the Pnics on a 
+		given VMHost
+    .PARAMETER VMHost
+        VMhost to query
+    .PARAMETER UnAssigned
+        Only return unassigned Pnics
+    .PARAMETER Assigned
+        Only return Assigned Pnics
+    .EXAMPLE
+        Get-VMHost | Get-VMHostPnic
+    #>
+    [CmdletBinding()]
+    Param(
+      [Parameter(Mandatory=$true,
+          ValueFromPipeline=$true)]
+      [VMware.VimAutomation.ViCore.Impl.V1.Inventory.VMHostImpl]
+      $VMhost
+    , [Parameter()]
+      [Switch]
+      $UnAssigned
+    , [Parameter()]
+      [Switch]
+      $Assigned
+    )
+    Begin
+    {
+        If ($Assigned)      {
+			$Filter = {$usedPNics[$Pnic.key]}
+		}
+        ElseIF ($Unassigned){
+			$Filter = {-Not $usedPNics[$Pnic.key]}
+		}
+        Else                {
+			$filter = {$True}
+		}
+    }
+    Process
+    {
+        $VMHost | Get-view -Property 'Config.Network'|
+        ForEach-Object {
+            $UsedPnics = @{}
+            Foreach ($Switch in $_.Config.Network.ProxySwitch )
+            {
+                If ($switch.Pnic)
+                {
+                    Foreach ($Pnic in $switch.Pnic)
+                    {
+                        $UsedPnics.add($Pnic,$switch.DvsName)
+                    }
+                }
+            }
+            Foreach ($Switch in $_.Config.Network.Vswitch )
+            {
+                If ($switch.Pnic)
+                {
+                    Foreach ($Pnic in $switch.Pnic)
+                    {
+                        $UsedPnics.add($Pnic,$switch.Name)
+                    }
+                }
+            }
+            Foreach ($Pnic in $_.Config.Network.Pnic)
+            {
+                IF (&$Filter)
+                {
+                    New-Object PSObject -Property @{
+                        Pnic = $Pnic.Device
+                        Switch = $usedPNics[$Pnic.key]
+                        Driver = $Pnic.Driver
+                        VMHost = $VMhost
+                    }
+                }
+            }
+        }
+    }
+}
+
+
+# Listing 4.6  Add a VMhost to a vDS
+Get-VMhost “vSphere01*” |
+    Add-DistributedSwitchVMHost -VMhost $_ `
+         -DistributedSwitch vDS01 `
+         -Pnic vmnic2,vmnic3
+		 
+# Listing 4.7: Fully Provition vDS 
+#Create and configure our new vDS
+$Datacenter = Get-Datacenter -name ‘ATL-PROD’
+$vDS = New-DistributedSwitch -Name 'vDS01' `
+    -Datacenter $Datacenter `
+    -NumberOfUplinks 6 |
+    Set-DistributedSwitch -LinkDiscoveryProtocol 'cdp' `
+        -LinkDiscoveryOperation 'both' `
+        -ContactName 'Glenn Sizemore' `
+        -ContactInfo 'Glenn.Sizemore@mailinator.com' `
+        -Description 'Atlanta Datacenter Production vSwitch' 
+# a regulare DVPG
+$vDS | New-DistributedSwitchPortGroup -Name 'vDS01-VLAN22' `
+    -VLAN 22 |
+    Set-DistributedSwitchPortGroup -NumberOfPorts 256 `
+       -PromiscuousMode $false `
+       -MacAddressChanges $False `
+       -ForgedTransmits $false `
+       -LoadBalancing 'loadbalance_loadbased' `
+       -ActiveDVUplinks DVUplink2,DVUplink3,DVUplink5,DVUplink6
+# Trunked DVPG
+$vDS | New-DistributedSwitchPortGroup -Name 'vDS01-Trunk01' `
+    -VLANTrunkRange '7,19,25-28' |
+    Set-DistributedSwitchPortGroup -NumberOfPorts 128 `
+       -LoadBalancing 'loadbalance_loadbased' `
+       -ActiveDVUplinks DVUplink2,DVUplink3,DVUplink5,DVUplink6
+# Private VLAN
+$vDS | New-DistributedSwitchPrivateVLAN -PrimaryVLanID 108 |
+    New-DistributedSwitchPortGroup -Name 'vDS01-10.10.10.0' `
+        -PrivateVLAN 108 |
+    Set-DistributedSwitchPortGroup -NumberOfPorts 128 `
+        -ActiveDVUplinks DVUplink1,DVUplink4
+# add hosts
+Get-DistributedSwitchCandidate -DistributedSwitch vDS01 `
+        -VIObject $Datacenter |
+    ForEach-Object {
+        $PNICs = Get-VMHostPnic -VMhost $_ -UnAssigned |
+            Select-Object -ExpandProperty Pnic
+        IF ($PNICs)
+        {
+            Add-DistributedSwitchVMHost -VMhost $_ `
+               -DistributedSwitch vDS01 `
+               -Pnic $PNICs
+        }
+    }
+
+# Listing 4.8: Modify an existing vDS to VMhost Pnic mapping.
+
+#Change an existing
+Set-DistributedSwitchVMHost -VMhost $vmhost `
+    -DistributedSwitch vDS01 `
+    -Pnic vmnic0,vmnic2
+#Remove all Pnic Mappings
+Set-DistributedSwitchVMHost -VMhost $vmhost `
+    -DistributedSwitch vDS01 `
+    -Pnic “”
+
+# Listing 4.9: Remove VMHost from vDS
+remove-DistributedSwitchVMHost -VMhost (Get-VMHost vSphere01*) `
+	-DistributedSwitch vDS01
+
+# Listing 4.10: Creating NetworkAdapters on a DVPG
+$vmhost = Get-VMHost vSphere01*
+$vDS = Get-DistributedSwitch -Name 'vDS01'
+New-DistributedSwitchNetworkAdapter -VMHost $vmhost `
+    -PortGroup 'vMotion' `
+    -DistributedSwitch $vDS `
+    -IP '192.168.2.40' `
+    -SubnetMask '255.255.255.0' `
+    -VMotionEnabled
+
+# Listing 4.11: Get existing VMHost vDS Network Adapter
+
+Get-DistributedSwitchNetworkAdapter -VMHost $vmhost `
+    -PortGroup 'vMotion' `
+    -DistributedSwitch 'vDS01'
+
+
+Key                    : vmk1
+Ip                     : VMware.Vim.HostIpConfig
+Mac                    : 00:50:56:7f:85:27
+DistributedVirtualPort : VMware.Vim.DistributedVirtualSwitchP...
+Portgroup              : 
+Mtu                    : 1500
+TsoEnabled             : True
+DynamicType            : 
+DynamicProperty        :
+
+
+# Listing 4.12: Changing vDS Network Adapter to use DHCP
+$NetworkAdapter = Get-DistributedSwitchNetworkAdapter `
+    -VMHost $vmhost `
+    -PortGroup 'vMotion' `
+    -DistributedSwitch 'vDS01'
+    
+Set-DistributedSwitchNetworkAdapter -VMHost $vmhost `
+    -IPv4DHCP `
+    -key $NetworkAdapter.key `
+    -NetworkAdapter $NetworkAdapter
+
+# Listing 4.13: Enabling FT logging across a cluster
+Foreach ($VMhost in (Get-Cluster Prod01|Get-VMHost))
+{
+    Get-DistributedSwitchNetworkAdapter `
+        -VMHost $vmhost `
+        -PortGroup 'vMotion' `
+        -DistributedSwitch 'vDS01' |
+        Set-DistributedSwitchNetworkAdapter `
+            -FaultToleranceLoggingEnabled $true `
+            -VMHost $vmhost 
+}
+
+# Listing 4.14: Remove an existing vDS Network Adapter
+Remove-DistributedSwitchNetworkAdapter 
+    -VMHost $VMhost 
+    -PortGroup 'vMotion' 
+    -DistributedSwitch 'vDS01'
+
+# Listing 4.15 Enabling FT
+$VM = Get-VM -Name 'HVMIC'
+$VM.ExtensionData.CreateSecondaryVM_Task($Null)
+
+#Listing 4.16: Specify where secondary VM should be created.
+$VMHost = Get-VMHost -Name 'vSphere01*'
+$VM = Get-VM -Name 'HVMIC'
+$VM.ExtensionData.CreateSecondaryVM_Task($VMHost.Id)
+
+# Listing 4.17: Disable FT
+$VM = Get-VM -Name 'HVMIC'
+$VM.ExtensionData.TurnOffFaultToleranceForVM()
+
+# Listing 4.18: Modifing FT Protected VMs
+
+# Get the VM
+$VM = Get-VM -Name 'HVMIC'
+# Disable FT
+$VM.ExtensionData.TurnOffFaultToleranceForVM()
+# Add memory
+Set-VM -VM $VM -MemoryMB 4096 -Confirm:$false
+# Enable FT
+$vm.ExtensionData.CreateSecondaryVM_Task($Null)
+
+# Listing 4.19: Get-SIOC Function
+function Get-Sioc
+{
+  <#
+  .SYNOPSIS
+    Get the Storage IO Control settings for a host or a 
+	datastore
+  .DESCRIPTION
+    When called against a VMHost, the cmdlet will return the 
+	SIOC settings on the host
+    When called against a Datastore, the cmdlet will return the 
+	SIOC settings for all hosts on which the datastore is 
+	accessible
+  .NOTES
+    Authors:    Luc Dekens, Glenn Sizemore
+  .PARAMETER VMHost
+    On or more hosts
+  .PARAMETER Datastore
+    On or more datastores
+  .EXAMPLE
+    PS> Get-Sioc -VMHost (Get-VMHost)
+  .EXAMPLE
+    PS> Get-VMHost -Name "esx41" | Get-Sioc
+  .EXAMPLE
+    PS> Get-Sioc -Datastore (Get-Datastore)
+  .EXAMPLE
+    PS> Get-Datastore -Name "DS1" | Get-Sioc
+  #>
+  param(
+    [parameter(
+        ParameterSetName = "VMHost"
+    ,   valuefrompipeline = $true
+    ,   position = 0
+    ,   HelpMessage = "Enter a host"
+    )]
+    [VMware.VimAutomation.ViCore.Impl.V1.Inventory.VMHostImpl[]]
+    $VMHost
+  , [parameter(
+        ParameterSetName = "Datastore"
+    ,   valuefrompipeline = $true
+    ,   position = 0
+    ,   HelpMessage = "Enter a datastore"
+    )]
+    [VMware.VimAutomation.ViCore.Impl.V1.DatastoreManagement.DatastoreImpl[]]
+    $Datastore
+  )
+  process
+  {
+    switch($PsCmdlet.ParameterSetName)
+    {
+      "VMHost"
+      {
+        $si = Get-View 'ServiceInstance'
+        $VimService = $si.Client.VimService
+        Foreach ($vmh in $VMHost)
+        {
+          $result =$VimService.QueryIORMConfigOption(`
+            [VMWare.Vim.VIConvert]::ToVim41(`
+              $si.Content.StorageResourceManager),
+            [VMWare.Vim.VIConvert]::ToVim41(`
+              $vmh.Extensiondata.MoRef))
+          $enabled = $result.enabledOption
+          $Threshold = $result.congestionThresholdOption
+          New-Object PSObject -Property @{
+            'Name' = $vmh.Name
+            'SIOCSupported' = $enabled.supported
+            'SIOCStateDefault' = $enabled.defaultValue
+            'SIOCThresholdMinimum' = $Threshold.min
+            'SIOCThresholdMaximum' = $Threshold.max
+            'SIOCThresholdDefault' = $Threshold.defaultValue
+          }
+        }
+      }
+      "Datastore"
+      {
+        Foreach ($ds in $DataStore)
+        {
+          $iorm = $ds.Extensiondata.iormConfiguration
+          $cap = $ds.ExtensionData.Capability
+          New-Object PSObject -Property @{
+            'Name' = $Ds.Name
+            'SIOCEnabled' = $iorm.enabled
+            'SIOCThreshold' = `
+                $iorm.congestionThreshold
+            'SIOCSupported' = $cap.StorageIORMSupported
+          } 
+        }
+      }
+	}
+  }
+}
+
+# Listing 4.20 Set-SIOC Function
+Function Set-SIOC
+{
+  <#
+  .SYNOPSIS
+    Enables/disables Storage IO Control for a a datastore
+  .DESCRIPTION
+    The function enables or disables SIOC for a datastore.
+  .NOTES
+    Authors:    Luc Dekens
+  .PARAMETER Datastore
+    On or more datastores
+  .PARAMETER Name
+    Name of datststore to update
+  .PARAMETER Enabled
+    Should SIOC be enabled or disabled
+  .PARAMETER Threshold
+    Specify the threshold in milliseconds
+  .EXAMPLE
+    Set-Sioc -Datastore (Get-Datastore -Name DS1) -Enabled $true
+  .EXAMPLE
+    Get-Datastore | Set-SIOC -Enabled $true -Threshold 30
+  .EXAMPLE
+    Get-Datastore | Set-SIOC -Enabled $false
+  .EXAMPLE
+    Get-Datastore | Get-SIOC | 
+    Where-Object {$_.SIOCSupported -And -Not $_.SIOCEnabled} |
+    Set-SIOC -Enabled $true
+  #>
+  [cmdletBinding(SupportsShouldProcess=$true)]
+  param(
+    [parameter(
+        valuefrompipeline = $true
+    ,   valuefrompipelinebypropertyname=$true
+    ,   HelpMessage = "Enter a datastore"
+    )]
+    [VMware.VimAutomation.ViCore.Impl.V1.DatastoreManagement.DatastoreImpl[]]
+    $Datastore
+  ,
+    [parameter(
+        valuefrompipelinebypropertyname=$true
+    ,   HelpMessage = "Enter a datastore name"
+    )]
+    [string]
+    $Name
+  ,
+    [parameter(
+        valuefrompipeline = $true
+    ,   valuefrompipelinebypropertyname=$true
+    )]
+    [Alias("SIOCEnabled")]
+    [bool]
+    $Enabled
+  ,
+    [parameter(
+        valuefrompipeline = $true
+    ,   valuefrompipelinebypropertyname=$true
+    ,   HelpMessage='The latency in ms beyond which the storage array is considered congested'
+    )]
+    [Alias("SIOCThreshold")]
+    [ValidateRange(10,100)]
+    [int]
+    $Threshold = 30
+  )
+  process
+  {
+    If ($name)
+    {
+        Try
+        {
+           $Datastore += Get-Datastore -Name $Name -EA Stop
+        }
+        Catch
+        {
+            Write-Warning "$Name not found!"
+            continue;
+        }
+    }    
+    If ($Enabled)
+    {
+      $Msg = "Enabling SIOC"
+    }
+    else
+    {
+      $Msg = "Disabling SIOC (WHY?!?)"
+    }
+    $msg = "{0} and setting the threshold t0 {1}" -f `
+        $msg,$Threshold
+    $si = Get-View ServiceInstance
+    $VimService = $si.Client.VimService
+    $spec = New-Object VMware.Vim.StorageIORMConfigSpec
+    $spec.congestionThreshold = $Threshold
+    $spec.enabled = $Enabled
+    Foreach ($ds in $Datastore)
+    {
+      If ($PSCMdlet.Shouldprocess($ds.Name,$msg))
+      {
+      $taskMoRef = $VimService.ConfigureDatastoreIORM_Task(
+        [VMWare.Vim.VIConvert]::ToVim41( `
+            $si.Content.StorageResourceManager),
+        [VMWare.Vim.VIConvert]::ToVim41( `
+            $ds.Extensiondata.MoRef),
+        [VMWare.Vim.VIConvert]::ToVim41($spec))
+      $task = Get-View ( `
+        [VMWare.Vim.VIConvert]::ToVim($taskMoRef))
+      while ("running","queued" -contains $task.Info.State)
+      {
+        $task.UpdateViewData("Info.State")
+      }
+      }
+    }
+  }
+}
+
+# Listing: 4.21: Determin the supported congestion threshold for a datastore.
+
+$datastore = 'VMdata0'
+$SIOC = Get-Datastore $datastore |
+    Get-VMHost|
+    Get-Sioc  
+New-Object PSObject -Property @{
+    'Min'=($SIOC|Measure-Object -Maximum `
+        -Property SIOCThresholdMaximum |
+    Select-Object -ExpandProperty Maximum)
+    'Max' =($SIOC|Measure-Object -Minimum `
+        -Property SIOCThresholdMinimum |
+    Select-Object -ExpandProperty Minimum)
+}
+
+# Listing 4.22: Get-DPM Function
+Function Get-DPM
+{
+  <#
+  .SYNOPSIS
+    Get the Distributed Power Management settings for a 
+    given cluster
+  .DESCRIPTION
+    Get the Distributed Power Management settings for a 
+    given cluster
+  .PARAMETER Cluster
+    Name of the cluster to query.
+  .EXAMPLE
+    Get-Cluster | Get-DPM
+  #>
+  [CmdletBinding()]
+  param(
+  [Parameter(Mandatory=$true 
+  ,  ValuefrompipelineByPropertyName=$true)]
+  [Alias('Name')]
+  [String]
+  $Cluster
+  )
+  Process
+  {
+    $Cluster = Get-view -ViewType 'ClusterComputeResource' `
+      -Property 'ConfigurationEx','Name' `
+      -Filter @{'Name'=$Cluster} 
+    if (-Not $Cluster)
+    {
+      Write-Warning "$Name not found!"
+      continue;
+    }
+    $cluster.ConfigurationEx.DpmConfigInfo |
+      Select-Object @{
+        Name='Cluster'
+        Expression={$cluster.Name}
+      },
+      'Enabled', 
+      'DefaultDpmBehavior',
+      'HostPowerActionRate',
+      'Option'
+  }
+}
+
+# Listing 4.23: Set-DPM Function
+
+Function Set-DPM
+{
+    <#
+    .SYNOPSIS
+        Modify the Distributed Power Management settings for a 
+        given cluster
+    .DESCRIPTION
+        Modify the Distributed Power Management settings for a
+        given cluster
+    .PARAMETER Cluster
+        Name of the cluster to modify
+    .PARAMETER Enabled
+        Choose whether or not to enable DPM.
+    .PARAMETER DefaultDpmBehavior
+        Select the default DPM behavior.
+        Valid options are Manual, Automatic
+    .PARAMETER HostPowerActionRate
+        DPM generates only those recommendations that are above 
+        the specified rating. Ratings vary from 1 to 5. 
+        
+        This setting applies to both manual and automated
+    .EXAMPLE
+        Get-Cluster | Set-DPM -Enabled $True
+    .EXAMPLE
+        Set-DPM -Cluster Prod01 -DefaultDpmBehavior automatic 
+    #>
+    [CmdletBinding(SupportsShouldProcess=$true)]
+    param(
+    [Parameter(Mandatory=$true 
+    ,    ValuefrompipelineByPropertyName=$true)]
+    [Alias('Name')]
+    [String]
+    $Cluster
+    ,
+    [Parameter(ValuefrompipelineByPropertyName=$true)]
+    [bool]
+    $Enabled
+    ,
+    [Parameter(ValuefrompipelineByPropertyName=$true)]
+    [ValidateSet("automated","manual")]
+    [string]
+    $DefaultDpmBehavior
+    ,
+    [Parameter(ValuefrompipelineByPropertyName=$true)]
+    [ValidateRange(1,5)]
+    $HostPowerActionRate
+    )
+    Process
+    {
+        
+        $Cluster = Get-view -ViewType ClusterComputeResource `
+            -Property 'ConfigurationEx','Name' `
+            -Filter @{'Name'=$Cluster} 
+        if (-Not $Cluster)
+        {
+            Write-Warning "$Name not found!"
+            continue;
+        }
+        $spec = New-Object VMware.Vim.ClusterConfigSpecEx
+        $spec.dpmConfig = $cluster.ConfigurationEx.DpmConfigInfo
+        switch ($PSCmdlet.MyInvocation.BoundParameters.keys)
+        {
+            'Enabled'
+            {
+                $spec.dpmConfig.enabled = $Enabled
+                If ($Enabled)
+                {
+                    $MSG = "Enabling DPM "
+                }
+                Else
+                {
+                    $MSG = "Disabling DPM "
+                }
+            }
+            'DefaultDpmBehavior'
+            {
+                $spec.dpmConfig.defaultDpmBehavior = `
+                    $DefaultDpmBehavior
+                $MSG="{0} Setting default behavior: {1} " -f `
+                    $MSG, $DefaultDpmBehavior
+            }
+            'HostPowerActionRate'
+            {
+                $spec.dpmConfig.hostPowerActionRate  = `
+                    $HostPowerActionRate
+                $MSG="{0} Setting power action rate: {1} " -f `
+                    $MSG, $HostPowerActionRate
+            }
+        }
+        If ($PSCmdlet.ShouldProcess($Cluster.Name,$MSG))
+        {
+            
+          $taskMoRef=$Cluster.ReconfigureComputeResource_Task( `
+			$spec, $true)
+          $task = Get-View $taskMoRef
+          while("running","queued" -contains $task.Info.State)
+          {
+              $task.UpdateViewData("Info")
+          }
+          If ($task.Info.State -eq 'error')
+          {
+              write-error $task.Info.Error.LocalizedMessage
+          }
+          Else
+          {
+              Get-DPM -Cluster $cluster.Name
+          }
+        }
+   }
+}
+
+# Listing 4.24: Create a new host profile
+New-VMHostProfile -Name Prod01 `
+    -ReferenceHost (Get-VMHost vSphere01*) `
+    -Description "Host profile for cluster Prod01"
+
+# Listing 4.25: Apply host profile to any non-compliant host
+Get-Cluster Prod01 |
+Get-VMHost | 
+Test-VMHostProfileCompliance | 
+    ForEach-Object {
+        $profile = Get-VMHostProfile $_.VMHostProfile
+        Set-VMHost -State 'Maintenance' -VMHost $_.VMhost |
+            Apply-VMHostProfile -Profile $Profile |
+            Set-VMHost -State 'Connected' |
+            Test-VMHostProfileCompliance
+    }
+
+# Listing 4.26: Making changes on a cluster using host profiles
+$cluster = Get-Cluster prod01
+$VMhostProfile = Get-VMHostProfile -Entity $cluster
+# Add the datastore
+Get-VMHost -Location $cluster | 
+    New-Datastore -Name prod01_03 `
+        -Nfs `
+        -NfsHost 192.168.1.3 `
+        -Path /vol/prod01_03
+#update host profile
+$VMhostProfile = Set-VMHostProfile -Profile $VMhostProfile
+Get-VMHost -Location $cluster | 
+    Test-VMHostProfileCompliance
+
+function Get-VMHostAuthentication
+{
+<#
+.SYNOPSIS
+    The function retrieves the authentication services from a
+	vSphere host.
+.DESCRIPTION
+    This function retrieves the configured authentication 
+	services from a vSphere host.
+.NOTES
+    Authors: Luc Dekens, Glenn Sizemore
+.PARAMETER VMHost
+    Specify the vSphere host
+.EXAMPLE
+    Get-VMHost | Get-VMHostAuthentication
+#>
+    param(
+      [parameter(
+          ValueFromPipeline = $true
+      ,   Mandatory = $true)]
+      [VMware.VimAutomation.ViCore.Impl.V1.Inventory.VMHostImpl]
+      $VMHost
+    )
+    process
+    {
+        $confMgr = $VMHost.ExtensionData.ConfigManager
+        $filter = New-Object VMware.Vim.PropertyFilterSpec `
+            -Property @{
+                ObjectSet = New-Object VMware.Vim.ObjectSpec `
+                    -Property @{
+                        Obj=$confMgr.AuthenticationManager
+                    }
+            PropSet = New-Object VMware.Vim.PropertySpec `
+                -Property @{
+                    Type = "HostAuthenticationManager"
+                    All = $true
+            }
+        }
+        $sc = $VMHost.ExtensionData.Client.ServiceContent
+        $collector = Get-View $sc.PropertyCollector
+        $content = $collector.RetrieveProperties($filter)
+        $stores = $content | 
+            Select -First 1 -ExpandProperty PropSet | 
+            Where-Object {$_.Name -eq "info"}
+        foreach ($authConfig in $stores.Val.AuthConfig|
+            Where-Object {$_.Enabled})
+        {
+            switch($authConfig.GetType().Name)
+            {
+                'HostLocalAuthenticationInfo'
+                {
+                    New-Object PSObject -Property @{
+                        Name = $VMHost.Name
+                        Enabled = $authConfig.Enabled
+                        Type = 'Local authentication'
+                        Domain = $null
+                        Membership = $Null
+                        Trust = $null
+                    }
+                }
+                'HostActiveDirectoryInfo'{
+                    New-Object PSObject -Property @{
+                        Name = $VMHost.Name
+                        Enabled = $authConfig.Enabled
+                        Type = 'Active Directory'
+                        Domain = $authConfig.JoinedDomain
+                        Membership = `
+                            $authConfig.DomainMembershipStatus
+                        Trust = $authConfig.TrustedDomain
+                    }
+                }
+            }
+        }
+    }
+}
+
+
+function set-VMHostAuthentication
+{
+<#
+.SYNOPSIS
+    Add or Remove a vSphere host from active directory
+.DESCRIPTION
+    By adding a vSphere host to an AD domain, you can use AD 
+    authentication for console access, SSH and permissions on 
+    the host's child objects.
+.NOTES
+    Authors: Luc Dekens, Glenn Sizemore
+.PARAMETER VMHost
+    Specify the vSphere host.
+.PARAMETER Domain
+    The name of the Active Directory domain in FQDN notation.
+.PARAMETER User
+    An Active Directory account that administrative authority 
+    to add hosts to AD.
+.PARAMETER Password
+    The password for the AD account specified in -User
+.PARAMETER Credential
+    The credentials for an AD account with administrative 
+    authority to add hosts to AD.
+.PARAMETER Join
+    A switch indicating if the host shall be added.
+.PARAMETER Remove
+    A switch indicating if the host shall be removed from
+    The Domain.
+.PARAMETER RemovePermission
+    Will remove all AD permissions that still exist on the 
+    vSphere host and its children.
+.EXAMPLE
+    Get-VMHost | Set-VMHostAuthentication -Join `
+        -Domain vSphere.local `
+        -User glnsize@vSphere.local
+.EXAMPLE
+    Get-VMHost | Set-VMHostAuthentication -Credential $cred
+.EXAMPLE
+    Get-VMHost | Set-VMHostAuthentication -Remove
+#>
+    [cmdletbinding(SupportsShouldProcess=$true, 
+        DefaultParameterSetName='JoinUser')]
+    param(
+        [parameter(
+            ParameterSetName='JoinUser'
+        ,    ValueFromPipeline = $true
+        ,   Mandatory = $true)]
+        [parameter(
+            ParameterSetName='JoinCred'
+        ,    ValueFromPipeline = $true
+        ,   Mandatory = $true)]
+        [parameter(
+            ParameterSetName='Remove'
+        ,    ValueFromPipeline = $true
+        ,   Mandatory = $true)]
+      [VMware.VimAutomation.ViCore.Impl.V1.Inventory.VMHostImpl]
+        $VMHost
+    ,   [parameter(
+            ParameterSetName='JoinUser'
+        ,   ValueFromPipeline = $true
+        ,   Mandatory = $true)]
+        [parameter(
+            ParameterSetName='JoinCred'
+        ,   ValueFromPipeline = $true
+        ,   Mandatory = $true)]
+        [string]
+        $Domain
+    ,
+        [parameter(
+            ParameterSetName='JoinUser'
+        ,   ValueFromPipelinebyPropertyName = $true
+        ,   Mandatory = $true)]
+        [string]
+        $User
+    ,
+        [parameter(
+            ParameterSetName='JoinUser'
+        ,   ValueFromPipelinebyPropertyName = $true
+        ,   Mandatory = $true)]
+        [string]
+        $Password
+    ,
+        [parameter(
+            ParameterSetName='JoinCred'
+        ,   ValueFromPipelinebyPropertyName = $true
+        ,   Mandatory = $true)]
+        [System.Management.Automation.PSCredential]
+        $Credential
+    ,
+        [parameter(ParameterSetName='JoinCred')]
+        [parameter(ParameterSetName='JoinUser')]
+        [switch]
+        $Join
+    ,
+        [parameter(ParameterSetName='Remove'
+        ,   Mandatory = $true)]
+        [switch]
+        $Remove
+     ,
+        [parameter(ParameterSetName='Remove')]
+        [switch]
+        $RemovePermission
+    )
+
+    process
+    {
+        $confMgr = $VMHost.ExtensionData.ConfigManager
+        $filter = New-Object VMware.Vim.PropertyFilterSpec `
+            -Property @{
+                ObjectSet = New-Object VMware.Vim.ObjectSpec `
+                    -Property @{
+                        Obj=$confMgr.AuthenticationManager
+                    }
+            PropSet = New-Object VMware.Vim.PropertySpec `
+                -Property @{
+                    Type = "HostAuthenticationManager"
+                    All = $true
+            }
+        }
+        $sc = $VMHost.ExtensionData.Client.ServiceContent
+        $collector = Get-View $sc.PropertyCollector
+        $content = $collector.RetrieveProperties($filter)
+        $stores = $content | 
+            Select-Object -First 1 -ExpandProperty PropSet | 
+            Where-Object {$_.Name -eq "supportedStore"}
+        $result = $stores.Val | 
+            ? {$_.Type -eq "HostActiveDirectoryAuthentication"}
+        $hostADAuth = [VMware.Vim.VIConvert]::ToVim41($result)
+
+        Switch ($pscmdlet.parameterSetName)
+        {
+            'JoinUser'
+            {
+                $msg = "Joining $Domain"
+                $action = {$VimSvc.JoinDomain_Task($hostADAuth,
+                        $Domain,$User,$Password)}
+            }
+            'JoinCred'
+            {
+                $User,$Pass=$Credential.GetNetworkCredential()|
+                    Foreach-Object {$_.UserName,$_.Password}
+                $msg = "Joining $Domain"
+                $action = {$VimSvc.JoinDomain_Task($hostADAuth,
+                    $Domain,$User,$Pass)}
+            }
+            'Remove'
+            {
+                $msg="Removing from Domain"
+                if ($RemovePermission) {$r = $True} 
+                Else {$r = $false}
+                $action = {$VimSvc.LeaveCurrentDomain_Task( `
+                    $hostADAuth,$r)}
+            }
+        }
+        if ($PSCMdlet.Shouldprocess($VMhost.Name,$msg))
+        {
+            $VimSvc = $VMHost.ExtensionData.Client.VimService
+            $taskMoRef = &$action
+            $VMHost.ExtensionData.WaitForTask(`
+                [VMware.Vim.VIConvert]::ToVim($taskMoRef))
+        }
+    }
+}

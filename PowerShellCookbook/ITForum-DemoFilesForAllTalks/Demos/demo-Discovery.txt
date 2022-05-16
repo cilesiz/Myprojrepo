@@ -1,0 +1,93 @@
+###############################################################
+# 4 Commands are all you need to discovery things in PowerShell
+# Get-Help 	- Get help 
+# Get-Command	- Get information about things that can execute
+# Get-Member	- Get information about an object's capabilities
+# Get-PSDrive	- Find out what object stores are available
+###############################################################
+# Get-Help is your introduction into the system
+Get-help
+# You can get help about Cmdlets 
+get-help get-process
+cls
+# You can get help about topics
+get-help about_Continue
+cls
+# You can get help for a set of things
+Get-Help Stop*
+Get-Help About_p*
+# Notice that there is a topic about PowerShell_v2
+Get-Help About_powershell_v2
+# You can get help at various levels of detail
+Get-Help Start-PsJob 
+cls
+Get-Help Start-PsJob -detailed
+cls
+# You can also get help on just the parameters you want
+Get-Help Start-PsJob -Parameter *Name*
+cls
+# HELP provides help for things that provide HELP
+# namely PowerShell Cmdlets and topics
+Get-Help ipconfig
+Get-Help Start-Demo
+cls
+# Get-Command gives information about anything that can be invoked
+Get-Command Start-PsJob
+Get-Command ipconfig
+Get-Command Start-Demo
+Get-Command nvapps.xml
+Get-Command *.txt
+verbs.txt
+cls
+# When you run a Cmdlet in PowerShell, 
+# it appears as though you get text.
+Get-Process *ss 
+# This is NOT the case
+# Whenever you are unsure about what you have, pipe it to Get-Member
+Get-Process *ss |Get-Member
+cls
+# This works with WMI objects as well
+get-wmiobject win32_bios
+get-wmiobject win32_bios | Get-Member
+# VBSCRIPT users know the pain of trying to find out
+# what a COM object can do.  Now it is easy:
+New-Object -Com Wscript.Network
+New-Object -Com Wscript.Network |Get-Member
+# If you do a lot of text processing, this is a useful hint
+"" |gm
+# It also helps you discover XML documents
+#ii r_and_j.xml
+$x = [xml](cat r_and_j.xml)
+$x.play
+$x.Play |gm
+# Here we will ask for just the properties.  
+# Notice that PowerShell
+# provides a user-view of the xml document
+$x.Play.ACT |gm -type property
+cls
+# Knowing what you can do to an object is important because 
+# PowerShell utilities are object-based. 
+gps *ss
+gps *ss | Ft Name,Id,Handles,Description,ProductVersion -auto
+$n = New-Object -COM Wscript.Network
+$n.EnumPrinterConnections()
+cls
+# Object stores are surfaced as PSDRIVES in PowerShell. 
+# Use Get-PSDrive to discover them
+Get-PSDrive
+# You can then use File system metaphors do continue discovery
+pushd hklm:\software\microsoft
+dir w*
+cd cert:\CurrentUser
+dir
+cd my
+dir
+popd
+# 
+###############################################################
+# 4 Commands are all you need to discovery things in PowerShell
+# Get-Help 	- Get help 
+# Get-Command	- Get information about things that can execute
+# Get-Member	- Get information about an object's capabilities
+# Get-PSDrive	- Find out what object stores are available
+###############################################################

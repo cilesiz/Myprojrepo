@@ -1,0 +1,366 @@
+function Get-VIEventType{ 
+  <# 
+.SYNOPSIS 
+  Returns all the available event types in the vSphere environment
+  Can be used on against a vCenter and an ESX(i) server  
+.DESCRIPTION 
+  The function returns a string array that contains all the available 
+  eventtypes in the current vSphere environment. 
+.NOTES 
+  Authors:  Luc Dekens
+.PARAMETER Category 
+  Select the eventtype to report on. 
+  Default values are: info,warning,error,user 
+.EXAMPLE 
+  PS> Get-VIEventType | Export-Csv -Path $csvName -NoTypeInformation 
+#> 
+  param( 
+  [parameter(HelpMessage = "Accepted categories: info,warning,error,user")] 
+  [string[]]$Category = @("info","warning","error","user")) 
+  begin{
+    $si = Get-View ServiceInstance
+    $eventMgr = Get-View $si.Content.EventManager 
+    $oldErrorActionPreference = $ErrorActionPreference 
+    $ErrorActionPreference = "SilentlyContinue" 
+  } 
+
+  process{
+    $eventMgr.Description.EventInfo | `
+    where {$Category -contains $_.Category} | %{
+      New-Object PSObject -Property @{ 
+        Name = $_.Key 
+        Category = $_.Category 
+        Description = $_.Description 
+        Hierarchy = &{ 
+          $obj = New-Object -TypeName ("VMware.Vim." + $_.Key) 
+          if($obj){ 
+            $obj = $obj.GetType() 
+            $path = "" 
+            do{ 
+              $path = ($obj.Name + "/") + $path 
+              $obj = $obj.BaseType 
+            } until($path -like "Event*") 
+            $path.TrimEnd("/") 
+          } 
+          else{ 
+            "--undocumented--" 
+          } 
+        } 
+      }
+    }
+  } 
+
+  end{ 
+    $ErrorActionPreference = $oldErrorActionPreference 
+  }
+}
+
+function Get-VITaskSDK{ 
+<#
+.SYNOPSIS
+  Returns Tasks that comply with the specifications passed
+  in the parameters
+.DESCRIPTION
+  The function will return vSphere tasks, as TaskInfo objects,
+  that fit the specifications passed through the parameters.
+  A connection to a vCenter is required!
+.NOTES
+  Authors:  Luc Dekens
+.PARAMETER Entity
+  The entity whose tasks shall be returned
+.PARAMETER EntityChildren
+  A switch that specifies if the tasks for the Entity or for
+  the Entity and all it's children shall be returned
+.PARAMETER Start
+  The beginning of the time range in which to look for tasks.
+  If not specified, the function will start with the oldest
+  available task.
+.PARAMETER Finish
+  The end of the time range in which to look for tasks.
+  If not specified, the function will use the current time
+  as the end of the time range.
+.PARAMETER State
+  The state of the tasks. Valid values are error, queued,
+  running, success
+.PARAMETER User
+  If specified will only return tasks started by this user.
+  If not specified the function will return tasks started by
+  any user.
+.EXAMPLE 1
+  PS> Get-VITaskSDK -Entity (Get-Cluster -Name "MyCluster")
+.EXAMPLE 2
+  PS> Get-VITaskSDK -State "error"
+#>
+
+  param( 
+  [parameter(ValueFromPipeline = $true,Position=1)] 
+  $Entity, 
+  [switch]$EntityChildren = $false, 
+  [DateTime]$Start, 
+  [DateTime]$Finish, 
+  $State, 
+  $User 
+  ) 
+
+  process{ 
+    $taskMgr = Get-View TaskManager 
+    $taskNumber = 100 
+
+    if($defaultVIServer.ProductLine -ne "vpx"){
+      Write-Error "Error : you need to be connected to a vCenter"
+      return
+    }
+    
+    $taskFilter = New-Object VMware.Vim.TaskFilterSpec 
+
+    if($Entity){ 
+      $taskFilter.Entity = New-Object VMware.Vim.TaskFilterSpecByEntity 
+      $taskFilter.Entity.entity = ($Entity | Get-View).MoRef 
+      if($EntityChildren){ 
+        $taskFilter.Entity.recursion = "self" 
+      } 
+      else{ 
+        $taskFilter.Entity.recursion = "all" 
+      } 
+    } 
+
+    if($Start -or $Finish){ 
+      $taskFilter.Time = New-Object VMware.Vim.TaskFilterSpecByTime 
+      if($Start){ 
+        $taskFilter.Time.beginTime = $Start 
+      } 
+      if($Finish){ 
+        $taskFilter.Time.endTime = $Finish 
+        $taskFilter.Time.timeType = "startedTime" 
+      } 
+    } 
+
+    $taskCollector = Get-View ($taskMgr.CreateCollectorForTasks($taskFilter)) 
+    $taskCollector.RewindCollector | Out-Null 
+
+    $tasks = $taskCollector.ReadNextTasks($taskNumber) 
+    while($tasks){ 
+      $tasks | % { 
+        $_ 
+      } 
+      $tasks = $taskCollector.ReadNextTasks($taskNumber) 
+    } 
+    # By default 32 task collectors are allowed. Destroy this task collector. 
+    $taskCollector.DestroyCollector() 
+  } 
+}
+
+function Get-VIEventSDK{ 
+<#
+.SYNOPSIS
+  Returns Events that comply with the specifications passed
+  in the parameters
+.DESCRIPTION
+  The function will return vSphere events, as Event objects,
+  that fit the specifications passed through the parameters.
+.NOTES
+  Authors:  Luc Dekens
+.PARAMETER Entity
+  The entity whose events shall be returned
+.PARAMETER EntityChildren
+  A switch that specifies if the events for the Entity or for
+  the Entity and all it's children shall be returned
+.PARAMETER Start
+  The beginning of the time range in which to look for events.
+  If not specified, the function will start with the oldest
+  available event.
+.PARAMETER Finish
+  The end of the time range in which to look for events.
+  If not specified, the function will use the current time
+  as the end of the time range.
+.PARAMETER EventChainId
+  The function will only return events that have this specific
+  EventChainId.
+.PARAMETER User
+  If specified will only return events for tasks triggered by
+  this user. If not specified the function will return events
+  independent of the user that started the task.
+.EXAMPLE 1
+  PS> Get-VIEventSDK -Entity (Get-Cluster -Name "MyCluster")
+.EXAMPLE 1
+  PS> Get-VIEventSDK -EventChainId $task.EventChainId
+#>
+
+    param( 
+    [parameter(ValueFromPipeline = $true,Position=1)] 
+    $Entity, 
+    [switch]$EntityChildren = $false, 
+    [DateTime]$Start, 
+    [DateTime]$Finish, 
+    [Int]$EventChainId, 
+    [String]$User 
+    ) 
+
+    process{
+        $si = Get-View ServiceInstance
+        $eventMgr = Get-View $si.Content.EventManager 
+        $eventNumber = 100 
+
+        $eventFilter = New-Object VMware.Vim.EventFilterSpec 
+
+        if($Entity){ 
+            $eventFilter.Entity = New-Object VMware.Vim.EventFilterSpecByEntity 
+            $eventFilter.Entity.entity = ($Entity | Get-View).MoRef 
+            if($EntityChildren){ 
+                $eventFilter.Entity.recursion = "self" 
+            } 
+            else{ 
+                $eventFilter.Entity.recursion = "all" 
+            } 
+        } 
+
+        if($Start -or $Finish){ 
+            $eventFilter.Time = New-Object VMware.Vim.EventFilterSpecByTime 
+            if($Start){ 
+                $eventFilter.Time.beginTime = $Start 
+            } 
+            if($Finish){ 
+                $eventFilter.Time.endTime = $Finish 
+                $eventFilter.Time.timeType = "startedTime" 
+            } 
+        } 
+
+        if($EventChainId){ 
+            $eventFilter.eventChainId = $EventChainId 
+        } 
+
+        $eventCollector = Get-View ($eventMgr.CreateCollectorForEvents($eventFilter)) 
+        $eventCollector.RewindCollector | Out-Null 
+
+        $events = $eventCollector.ReadNextEvents($eventNumber) 
+        while($events){ 
+            $events | % { 
+                $_ 
+            } 
+            $events = $eventCollector.ReadNextEvents($eventNumber) 
+        } 
+        # By default 32 task collectors are allowed. Destroy this task collector. 
+        $eventCollector.DestroyCollector() 
+    } 
+}
+
+function Get-VpxOption{
+<# 
+.SYNOPSIS 
+  Fetches the values for one or more vCenter Advanced Options
+.DESCRIPTION 
+  The function returns the settings for a vCenter Advanced
+  Option. If the function is called without a specific key, all options
+  are returned.
+  This function requires a connection to a vCenter
+.NOTES 
+  Author:  Luc Dekens
+.PARAMETER Key
+  The key(s) of the requested option(s).
+  When $null the function returns all options.
+.EXAMPLE
+  PS> Get-VpxOption -Key "mail.smtp.server"
+#>
+
+  param(
+  [parameter(HelpMessage = 'The key(s) of (an) Advanced Option(s) or $null')] 
+  [string[]]$Key = $null)
+
+	$optTab = @{}
+  $si = Get-View ServiceInstance
+  $optMgr = Get-View $si.Content.setting
+  $optMgr.SupportedOption | %{
+    $optTab[$_.Key] = New-Object PSObject -Property @{
+      Label = $_.Label
+      Default = $_.OptionType.DefaultValue
+      Min = $_.OptionType.Min
+      Max = $_.OptionType.Max
+      ReadOnly = $_.OptionType.ValueIsReadOnly
+      Summary = $_.Summary
+    }
+  }
+  $optMgr.Setting | where{$optTab.ContainsKey($_.Key)} | `
+		where{!$Key -or $Key -contains $_.Key} | %{
+    $row = "" | Select Key,Value,DeFault,Label,Summary,Min,Max,ReadOnly
+    $row.Key = $_.Key
+    $row.Value = $_.Value
+    $row.Default = $optTab[$_.Key].Default
+    $row.Label = $optTab[$_.Key].Label
+    $row.Summary = $optTab[$_.Key].Summary
+    $row.Min = $optTab[$_.Key].Min
+    $row.Max = $optTab[$_.Key].Max
+    $row.ReadOnly = $optTab[$_.Key].ReadOnly
+    $row
+  }
+}
+
+function Set-VpxOption{
+<# 
+.SYNOPSIS 
+  Sets new values for vCenter Advanced Options
+.DESCRIPTION 
+  The function sets new values for one or more vCenter Advanced
+  Options. If multiple keys are passed, an equal amount of values
+  must be passed
+  This function requires a connection to a vCenter
+.NOTES 
+  Authors:  Luc Dekens
+.PARAMETER Key
+  The keyx of the optionx that will get a new value.
+.PARAMETER Value
+  The new valuex of the options.
+.EXAMPLE
+  PS> Set-VpxOption -Key "mail.smtp.server" -Value "mail.test.local"
+#>
+
+  param(
+  [parameter(mandatory=$true,
+  HelpMessage = "The keys of the Advanced Options")] 
+  [string[]]$Key,
+  [parameter(mandatory=$true,
+  HelpMessage = "The new values of the Advanced Options")] 
+  [PSObject[]]$Value
+  )
+
+  $si = Get-View ServiceInstance
+  $optMgr = Get-View $si.Content.setting
+  $changedValue = @()
+  $i = 0
+  $Key | %{
+    $changedValue += New-Object VMware.Vim.OptionValue -Property @{
+      Key = $Key[$i]
+      Value = $Value[$i]
+    }
+    $i++
+  }
+  $optMgr.UpdateOptions($changedValue)
+}
+
+function Get-TaskRetention{
+  Get-VpxOption -Key "task.maxAgeEnabled","task.maxAge" | `
+  Select Key,Value
+}
+
+function Set-TaskRetention{
+  param(
+  [Boolean]$Enabled,
+  [int]$Duration = 180)
+
+  Set-VpxOption -Key "task.maxAgeEnabled","task.maxAge" `
+    -Value $enabled,$duration
+}
+
+function Get-EventRetention{
+  Get-VpxOption -Key "event.maxAgeEnabled","event.maxAge" | `
+  Select Key,Value
+}
+
+function Set-EventRetention{
+  param(
+  [Boolean]$Enabled,
+  [int]$Duration = 180)
+
+  Set-VpxOption -Key "event.maxAgeEnabled","event.maxAge" `
+    -Value $enabled,$duration
+}
+

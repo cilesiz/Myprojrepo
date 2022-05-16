@@ -1,0 +1,525 @@
+################################################################
+# Listing 2.1: Get disk Identifier
+################################################################
+Get-VMhost ‘ESX01’| 
+    Get-Datastore | 
+    Select-Object -ExpandProperty ExtensionData |
+    Select-Object -ExpandProperty Info |
+    Select-Object -ExpandProperty Vmfs | 
+    Select-Object -ExpandProperty Extent |
+    Select-Object -ExpandProperty DiskName
+
+################################################################
+# Listing: 2.2: Post-installation configuration from a manually-run script
+################################################################
+# Add our host to vCenter, and immediately enable lockdown mode!
+$VMhost = Add-VMHost -Name vSphere03.vSphere.local `
+    -User root `
+    -Password pa22word `
+    -Location (Get-Datacenter) `
+    -Force | 
+    Set-VMHostLockdown -Enable
+# Add iSCSI VMkernel vNIC
+$vSwitch = Get-VirtualSwitch -VMHost $VMHost -Name 'vSwitch0'
+# we have to first create a portgroup to bind our vNIC to.
+$vPG = New-VirtualPortGroup -Name iSCSI `
+    -VirtualSwitch $vSwitch `
+    -VLanId 55
+# Create our new vNIC in the iSCSI PG we just created
+$vNIC = New-VMHostNetworkAdapter -VMHost $VMHost `
+    -PortGroup iSCSI `
+    -VirtualSwitch $vSwitch `
+    -IP 10.10.55.3 `
+    -SubnetMask 255.255.255.0
+
+# Enable the software ISCSI adapter if not already enabled.
+$VMHostStorage = Get-VMHostStorage -VMHost $VMhost | 
+    Set-VMHostStorage -SoftwareIScsiEnabled $True            
+
+#sleep while iSCSI starts up
+Start-Sleep -Seconds 30            
+
+# By default vSphere will set the Target Node name to
+# iqn.1998-01.com.vmware:<HostName>-<random number> the
+# following cmd will remove everything after the hostname, set
+# Chap auth, and add a send Target.
+#
+# Example iqn.1998-01.com.vmware:esx01-165435 becomes
+# iqn.1998-01.com.vmware:esx01
+#
+# Note that if your hostname has dashes in it, you’ll
+# need to change the regex below.
+$pattern = "iqn.1998-01.com.vmware\:\w*"
+Get-VMHostHba -VMHost $VMHost -Type IScsi |
+    Where-Object{ $_.IScsiName -match $pattern} |
+    Set-VMHostHba -IScsiName $Matches[0] |
+    Set-VMHostHba -ChapName 'vmware' `
+        -ChapPassword 'password' `
+        -ChapType "Required" |
+    New-IScsiHbaTarget -Address '192.168.1.1' -Port "3260" |
+        Out-Null
+
+################################################################
+# Listing 2.3: Set-VMHostLockdown Function
+################################################################
+Function Set-VMHostLockdown 
+{
+  <#
+  .SYNOPSIS
+    Enable or Disable VMhost lockdown mode
+  .DESCRIPTION
+    Enable or Disable VMhost lockdown mode
+  .PARAMETER VMHost
+    VMHost to modify lockdown mode on.
+  .PARAMETER Enable
+    Enable VMHost lockdown mode.
+  .PARAMETER Disable
+    Disable VMHost lockdown mode.
+  .EXAMPLE
+    Get-VMHost ESX01 | Set-VMHostLockdown -Enable
+  .EXAMPLE
+    Set-VMHostLockdown -VMHost (Get-VMHost ESX08) -Disable
+  #>
+  [CmdletBinding(SupportsShouldProcess=$true)]
+  param(
+    [Parameter(
+       Mandatory=$true
+    ,  ValueFromPipeline=$true
+    ,  HelpMessage="VMHost"
+    ,   ParameterSetName='Enable'
+    )]
+    [Parameter(
+       Mandatory=$true
+    ,  ValueFromPipeline=$true
+    ,  HelpMessage="VMHost"
+    ,   ParameterSetName='Disable'
+    )]
+    [VMware.VimAutomation.ViCore.Impl.V1.Inventory.VMHostImpl]
+    $VMHost
+  ,
+    [Parameter(
+      ParameterSetName='Enable'
+    )]
+    [switch]
+    $Enable
+  ,
+    [Parameter(
+      ParameterSetName='Disable'
+    )]
+    [switch]
+    $Disable
+  )
+  Begin
+  {
+    $SI = Get-View ServiceInstance -Verbose:$false
+    $scheduledTaskManager = `
+	  Get-View $SI.Content.ScheduledTaskManager `
+        -Verbose:$false
+    $OnceTaskScheduler = `
+	  New-Object -TypeName VMware.Vim.OnceTaskScheduler
+    $OnceTaskScheduler.runat = (get-date).addYears(5)
+    $ScheduledTaskSpec = `
+	  New-Object -TypeName VMware.Vim.ScheduledTaskSpec
+    $ScheduledTaskSpec.Enabled = $true
+    $ScheduledTaskSpec.Name = "PowerCLI $(Get-Random)"
+    $ScheduledTaskSpec.Scheduler = $OnceTaskScheduler
+    $tasks = @()
+  }
+  Process 
+  {
+    $VMhosts = $null
+    Switch ($PSCmdlet.ParameterSetName)
+    {
+      "Enable"
+      {
+        $msg = "Enable lockdown mode on $($VMHost.Name)"
+        $ScheduledTaskSpec.Description = $msg
+        $ScheduledTaskSpec.Action = New-Object `
+          -TypeName VMware.Vim.MethodAction `
+          -Property @{name="DisableAdmin"}
+        $scheduledTaskSpec.Name = "PowerCLI $(Get-Random)"
+        $VMHosts = $VMHost | 
+          Where-Object {!$_.ExtensionData.Config.AdminDisabled}
+      }
+      "Disable"
+      {
+        $msg = "Disable lockdown mode on $($VMHost.Name)"
+        $ScheduledTaskSpec.Description = $msg
+        $scheduledTaskSpec.Name = "PowerCLI $(Get-Random)"
+        $ScheduledTaskSpec.Action = New-Object `
+          -TypeName VMware.Vim.MethodAction `
+          -Property @{name="EnableAdmin"}
+        $VMHosts = $VMHost | 
+          Where-Object {$_.ExtensionData.Config.AdminDisabled}
+      }
+    }
+    IF ($VMhosts)
+    {
+      Foreach ($VMHost in $VMhosts)
+      {
+        if ($PSCmdlet.ShouldProcess($VMHost.name,$msg))
+        {
+         $TaskMoRef=$scheduledTaskManager.CreateScheduledTask( `
+            $vmhost.ExtensionData.MoRef, $ScheduledTaskSpec)
+          $ScheduledTask = Get-View $TaskMoRef -Verbose:$false
+          $ScheduledTask.RunScheduledTask()
+          $i = 0
+          while ($ScheduledTask.Info.ActiveTask -ne $null -or `
+		  $i -ge 100)
+          {
+            $ScheduledTask.UpdateViewData('Info.ActiveTask')
+            $i++
+            Start-Sleep -Milliseconds 200
+          }
+          $tasks += $ScheduledTask
+          Write-Output $VMhost
+        }
+      }
+    }
+  }
+  End 
+  {
+    Foreach ($task in $tasks)
+    {
+      $task.RemoveScheduledTask()
+    }
+  }
+}
+
+################################################################
+# Listing 2.4: Parameterized vSphere host configuration function
+################################################################
+Function ConfigureVMHost
+{
+    Param(
+        [String]$VMHostName
+    ,   [string]$User
+    ,   [string]$password
+    ,   [string]$IPAddress
+    ,   [object]$Location = (Get-Datacenter| Select -First 1)
+    )
+    # Add our host to vCenter, and imediatly enable 
+	# lockdown mode!
+    $VMhost = Add-VMHost -Name $VMHostName `
+        -User $user `
+        -Password $Password `
+        -Location $Location `
+        -Force | 
+        Set-VMHostLockdown -Enable
+    # Add iSCSI VMkernel vNIC
+    $vSwitch = Get-VirtualSwitch -VMHost $VMHost `
+	    -Name 'vSwitch0'
+    # we have to first create a portgroup to bind our vNIC to.
+    $vPG = New-VirtualPortGroup -Name iSCSI `
+        -VirtualSwitch $vSwitch `
+        -VLanId 55
+    # Create our new vNIC in the iSCSI PG we just created
+    $vNIC = New-VMHostNetworkAdapter -VMHost $VMHost `
+        -PortGroup iSCSI `
+        -VirtualSwitch $vSwitch `
+        -IP $IPAddress `
+        -SubnetMask 255.255.255.0
+
+    # Enable the software ISCSI adapter if not already enabled.
+    $VMHostStorage = Get-VMHostStorage -VMHost $VMhost | 
+        Set-VMHostStorage -SoftwareIScsiEnabled $True
+
+    #sleep while iSCSI starts up
+    Start-Sleep -Seconds 30            
+
+    # By default vSphere will set the Target Node name to 
+    # iqn.1998-01.com.vmware:<HostName>-<random number> This 
+    # script will remove everything after the hostname, set Chap
+    # auth, and add a send Target.
+    #
+    # Example iqn.1998-01.com.vmware:esx01-165435 becomes 
+    # iqn.1998-01.com.vmware:esx01
+    # Note that if your hostname has dashes in it, you’ll
+    # need to change the regex below.
+    $pattern = "iqn.1998-01.com.vmware\:\w*"
+    Get-VMHostHba -VMHost $VMHost -Type IScsi |
+    Where-Object{ $_.IScsiName -match $pattern} |
+    Set-VMHostHba -IScsiName $Matches[0] |
+    Set-VMHostHba -ChapName 'vmware' `
+        -ChapPassword 'password' `
+        -ChapType "Required" |
+    New-IScsiHbaTarget -Address '192.168.1.1' -Port "3260" |
+        Out-Null
+}
+
+################################################################
+# List 2.5:Apply host profile to one vSphere host
+################################################################
+# Get our target Profiles
+$HostProfile = Get-VMHostProfile -Name 'PRO*'
+# Get our target VMHost
+$VMHost = Get-VMHost 192*
+# Associate our host profile with the target host
+Apply-VMHostProfile -Entity $VMHost -Profile $HostProfile `
+	-AssociateOnly | Out-Null
+#test apply the host profile 
+$AdditionConfiguration = Apply-VMHostProfile -Entity $VMHost `
+	-ApplyOnly
+
+# proccess any required values filling in known values, and 
+# prompting for anything unexpected.
+$Var = @{}
+switch ($AdditionConfiguration.GetEnumerator())
+{
+    {$_.name -like '*iSCSI*.address' }     {
+		$var += @{$_.Name = '10.10.10.40'}  
+	}
+    {$_.name -like '*iSCSI*.subnetmask'}   {
+		$var += @{$_.Name = '255.255.255.0'}
+	}
+    {$_.name -like '*vMotion*.address'}    {
+		$var += @{$_.Name = '10.10.11.40'}  
+	}
+    {$_.name -like '*vMotion*.subnetmask'} {
+		$var += @{$_.Name = '255.255.255.0'}
+	}
+    default {
+        $value=Read-Host "Please provide a value for $($_.Name)"
+        $var += @{ $_.Name = $value}
+    }
+}
+# 1. Place our host in maintenance mode
+# 2. Apply our profile
+# 3. Exit mainenance mode
+# 4. Test for profile compliance
+Set-VMHost -VMHost $VMHost -State 'Maintenance' |
+    Apply-VMHostProfile -Variable $var |
+    Set-VMHost -State ‘Connected’|
+    Test-VMHostProfileCompliance
+
+################################################################
+# Listing 2.6: Complete vSphere host configuration function
+################################################################
+Function ConfigureVMHost
+{
+    <#
+    .SYNOPSIS
+        Get-Admin standard vSphere Post configuration script
+        Should only be ran against a frest host.
+    .DESCRIPTION
+        Get-Admin standard vSphere Post configuration script
+        Should only be ran against a frest host.
+    .PARAMETER IPAddress
+        IPAddress of the host to configure
+    .PARAMETER Cluster
+        Name of the cluster to add our host to.
+    .PARAMETER User
+        User to log in as default is root
+    .PARAMETER Password
+        Password to log in with if needed
+    .EXAMPLE
+        ConfigureVMHost -IPAddress 10.10.1.40 `
+		    -Cluster DC04_PROD_06
+    #>
+    [cmdletbinding()]
+    Param(
+        [Parameter(
+            Mandatory=$true
+        ,   ValueFromPipelineByPropertyname=$true
+        )]
+        [String]
+        $IPAddress
+    ,   
+        [Parameter(
+            Mandatory=$true
+        ,   ValueFromPipelineByPropertyName=$True
+        )]
+        [String]
+        $Cluster
+    ,   
+        [Parameter(
+            ValueFromPipelineByPropertyName=$True
+        )]
+        [string]
+        $User = 'root'
+    ,   
+        [Parameter(
+            ValueFromPipelineByPropertyName=$True
+        )]
+        [string]
+        $password
+    )
+    # while static enough to not be parameterized we'll still 
+	# define our advanced iSCSI configuration up front thereby 
+	# simplifying any future modifications.
+    $ChapName = 'vmware' 
+    $ChapPassword ='password' 
+    $ChapType ='Required'
+    $IScsiHbaTargetAddress ='10.10.11.200','10.10.11.201'
+    $IScsiHbaTargetPort = '3260'
+    
+    # we'll use the last octet of the IPAddress as the ID for 
+	# the host.
+    $ESXID = $IPaddress.split(".")[3]
+    # Get the actual cluster object for our targeted cluster.
+    $ClusterImpl = Get-Cluster -Name $Cluster
+    # Get the parent folder our cluster resides in.
+    $Folder = `
+	    Get-VIObjectByVIView $ClusterImpl.ExtensionData.Parent
+    Write-Verbose "Adding $($IPAddress) to vCenter"
+    # Add our host to vCenter, and immediately enable 
+	# lockdown mode!
+    $VMHost = Add-VMHost -Name $IPAddress `
+        -User $user `
+        -Password $Password `
+        -Location $Folder `
+        -Force `
+        -EA 'STOP' | 
+        Set-VMHostLockdown -Enable
+    
+    # Enter Maintenance mode
+    $VMHost = Set-VMHost -State 'Maintenance' -VMHost $VMHost |
+        Move-VMHost -Destination $Cluster
+    
+    #$VMHost = Get-VMHost -Name $IPAddress
+    
+    # Get the Host profile attached to that cluster
+    $Hostprofile = Get-VMHostProfile -Entity $Cluster
+    
+    # attach profile to our new host
+    Apply-VMHostProfile -Entity $VMHost `
+        -Profile $HostProfile `
+        -AssociateOnly `
+        -Confirm:$false | 
+            Out-Null
+     
+    # Apply our host profile to gather any required values    
+    $AdditionConfiguration = `
+		Apply-VMHostProfile -Entity $VMHost `
+        -Profile $HostProfile `
+        -ApplyOnly `
+        -Confirm:$false
+    # If we have a hashtable then there are additional config
+    # Items that need to be defined.  Loop through and attempt 
+	# to fill them in, prompting if we come across something 
+	# we're not prepared for.    
+    if ($AdditionConfiguration.gettype().name -eq 'Hashtable')
+    {
+        #Create a new hashtable to hold our information
+        $Var = @{}
+        # Loop through the collection
+        switch ($AdditionConfiguration.GetEnumerator())
+        {
+            {$_.name -like '*iSCSI*.address' }    	  {
+				$var +=@{$_.Name = $('10.10.10.{0}' -f $ESXID)}}
+            {$_.name -like '*iSCSI*.subnetmask'}   	  {
+				$var += @{$_.Name = '255.255.255.0'}}
+            {$_.name -like '*vMotion*.address'}    	  {
+				$var +=@{$_.Name = $('10.10.11.{0}' -f $ESXID)}}
+            {$_.name -like '*vMotion*.subnetmask'}    {
+				$var += @{$_.Name = '255.255.255.0'}}
+            Default {
+                $value = Read-Host `
+					"Please provide a value for $($_.Name)"
+                $var += @{ $_.Name = $value}
+            }
+        }
+        # Apply our profile with the additional config info
+        $VMHost = Apply-VMHostProfile -Entity $VMHost `
+            -Confirm:$false `
+            -Variable $var    
+    }
+    Else
+    {
+        # Apply our profile.
+        $VMHost = Apply-VMHostProfile -Entity $VMHost `
+            -Confirm:$false
+    }
+    # update vCenter with our new Profile compliance status
+    Test-VMHostProfileCompliance -VMHost $VMHost | out-null
+    
+    # Enable the software ISCSI adapter if not already enabled.
+    $VMHostStorage = Get-VMHostStorage -VMHost $VMhost | 
+        Set-VMHostStorage -SoftwareIScsiEnabled $True
+
+    #sleep while iSCSI starts up
+    Start-Sleep -Seconds 30            
+
+    # By default vSphere will set the Target Node name to
+    # iqn.1998-01.com.vmware:<HostName>-<random number> This
+    # script will remove everything after the hostname, set Chap
+    # auth, and add a send Target.
+    #
+    # Note that if your hostname has dashes in it, you’ll
+    # need to change the regex below.
+    $pattern = "iqn.1998-01.com.vmware\:\w*"
+    $HBA = Get-VMHostHba -VMHost $VMHost -Type 'IScsi' |
+        Where { $_.IScsiName -match $pattern }
+    If ($HBA.IScsiName -ne $Matches[0])
+    {
+        $HBA = Set-VMHostHba -IScsiHba $HBA `
+            -IScsiName $Matches[0]
+    }
+    Set-VMHostHba -IScsiHba $HBA `
+        -ChapName $ChapName `
+        -ChapPassword $ChapPassword `
+        -ChapType $ChapType |
+        New-IScsiHbaTarget -Address $IScsiHbaTargetAddress `
+            -Port $IScsiHbaTargetPort | Out-Null
+}
+
+################################################################
+# Listing 2.7:Function Trace-Port 
+################################################################
+Function Trace-Port 
+{
+    <#
+    .SYNOPSIS
+        Listen on a given port/ip address for a standard socket 
+		connection.return any text passed along said connection.
+    .DESCRIPTION
+        Listen on a given port/ip address for a standard socket 
+		connection.return any text passed along said connection.
+    .PARAMETER IPAddress
+        IP Address to establish the socket Tcp Listener
+    .PARAMETER Port
+        Tcp Port to establish listener on
+   .EXAMPLE
+		Trace-Port -IPAddress 192.168.1.15 -port 8080
+   .NOTES
+        Adapted from Maish Saidel-Keesing 
+		http://technodrone.blogspot.com
+    #>
+    [cmdletbinding()]
+    param (
+        [Parameter(Mandatory=$true
+        ,   Position=0
+        ,   HelpMessage="Address to listen for the connection"
+        )]
+        [string]
+        $IPAddress
+    ,   
+        [Parameter()]
+        [int]
+        $Port=3333
+    )
+    End
+    {
+        [byte[]]$bytes = 0..255|%{0}
+        $ip = [net.ipaddress]::Parse($IPAddress)
+        $listener = new-object System.Net.Sockets.TcpListener( `
+			$ip,$Port)
+        $listener.start()        
+        write-debug "Waiting for a connection on port $port..."
+        $client = $listener.AcceptTcpClient()
+        $RemoteEndPoint = $client.Client.RemoteEndPoint
+        $stream = $client.GetStream()
+        $raw = while (($i = `
+			$stream.Read($bytes, 0, $bytes.Length)) -ne 0)
+        {
+            $bytes[0..($i-1)]|%{$_}
+        }
+        $client.Close()
+        $listener.Stop()
+        write-debug "Connection closed."
+        New-Object PSObject -Property @{
+            'Source' = $RemoteEndPoint.split(':')[0]
+            'Data'   = [string]::Join("",[char[]]$raw)
+        }
+    }
+}

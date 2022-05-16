@@ -1,0 +1,35 @@
+Example 1:
+
+New-DatabaseAvailabilityGroup -Name DAG `
+-WitnessServer CAS1 `
+-WitnessDirectory C:\FSW `
+-DatabaseAvailabilityGroupIPAddresses 192.168.1.55
+
+
+Example 2:
+
+New-DatabaseAvailabilityGroup -Name DAG
+
+Get-DatabaseAvailabilityGroup -Identity DAG
+
+Set-DatabaseAvailabilityGroup -Identity DAG `
+-WitnessServer CAS1 `
+-WitnessDirectory C:\FSW `
+-DatabaseAvailabilityGroupIPAddresses 192.168.1.55
+
+
+Example 3:
+
+New-DatabaseAvailabilityGroup -Name DAG `
+-DatabaseAvailabilityGroupIPAddresses 10.1.1.10,192.168.1.10
+
+Set-DatabaseAvailabilityGroup -Identity DAG `
+-DatabaseAvailabilityGroupIPAddresses 10.1.1.25,192.168.1.25
+
+
+Example 4:
+
+New-DatabaseAvailabilityGroup -Name DAG `
+-WitnessServer FSW1 –WitnessDirectory C:\FSW `
+-DatabaseAvailabilityGroupIpAddresses `
+([System.Net.IPAddress])::None

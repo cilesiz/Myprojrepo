@@ -1,0 +1,49 @@
+Example 1:
+
+Get-AgentLog | ?{$_.Agent -eq 'Content Filter Agent'}
+
+
+Example 2:
+
+cd $exscripts
+.\Install-AntiSpamAgents.ps1
+Restart-Service MSExchangeTransport
+
+
+Example 3:
+
+Get-AgentLog -StartDate (Get-Date).AddDays(-7) -EndDate (Get-Date)
+
+
+Example 4:
+
+Get-AgentLog -StartDate "1/4/2015 9:00 AM" -EndDate "1/9/2015 11:00 PM"
+
+Example 5:
+
+Get-AgentLog -StartDate (Get-Date).AddDays(-7) -EndDate (Get-Date) | ?{$_.Agent -eq 'Sender Filter Agent'}
+
+  
+Example 6:
+
+Get-AgentLog | ?{$_.P1FromAddress -or $_.P2FromAddress -eq 'sales@litwareinc.com'}
+
+  
+Example 7:
+
+Get-AgentLog | ?{$_.P1FromAddress -or $_.P2FromAddress -like '*@litwareinc.com'}
+
+  
+Example 8:
+
+Get-AgentLog | ?{$_.Recipients -eq 'dsmith@contoso.com'}
+
+
+Example 9:
+
+Get-AgentLog -StartDate (Get-Date).AddDays(-3) -EndDate (Get-Date) | ?{$_.Agent -eq 'Content Filter Agent' -and $_.ReasonData -gt 4} | Export-CSV c:\contentfilter.csv -NoType
+
+
+Example 10:
+
+Get-AgentLog -Location e:\logs

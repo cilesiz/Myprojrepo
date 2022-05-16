@@ -1,0 +1,49 @@
+# Simple Cmdlets look like functions
+scat ScriptCmdlet1.ps1
+. .\ScriptCmdlet1.ps1
+Get-ExportedType -Name AppDomainManager
+Get-ExportedType
+cls
+scat ScriptCmdlet2.ps1
+. .\ScriptCmdlet2.ps1
+# [MANDATORY] and [HELPMESSAGE] 
+Get-ExportedType 
+# [POSITION]
+Get-ExportedType AppDomainManager
+# [ALIAS]
+Get-ExportedType -Typename AppDomainManager
+# [ValidateNotNullOrEmpty]
+Get-ExportedType ""
+# [ValidatePattern("^AP")]
+Get-ExportedType PSParser
+scat ScriptCmdlet3.ps1
+. .\ScriptCmdlet3.ps1
+Get-ExportedType AppDomain
+Get-ExportedType PSPARSER
+Get-ExportedType PROCESS
+cls
+scat ScriptCmdlet5.ps1
+. .\ScriptCmdlet5.ps1
+cls
+# The parameter is a [DATETIME] so let's give it one
+Get-DayofWeek (New-Object System.DateTime 2007,12,25)
+# That was a pain so let's just leverage PowerShells type coercion
+Get-DayofWeek 12/25/2007
+# That covers Christmas but what about New Years?
+Get-DayofWeek 12/25/2007,1/1/2008
+# Let's try it this way:
+$holidays = "12/25/2006","1/1/2008","7/4/2008"
+$holidays | Get-DayOfWeek
+cls
+scat ScriptCmdlet6.ps1
+. .\ScriptCmdlet6.ps1
+Import-csv ScriptCmdlet6.csv
+Import-csv ScriptCmdlet6.csv | Get-DayOfWeek
+# Notice that the following objects have a LASTWRITETIME property
+# Remember the [ALIAS] attribute we set on date?
+dir *.txt
+dir *.txt |Get-DayOfWeek
+# Also remember that I added StartTime as an alias as well:
+Get-Process *ss |ft name,id,StartTime -auto
+Get-Process *ss |Get-DayofWeek
+########### EOD ##############

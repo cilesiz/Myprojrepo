@@ -1,0 +1,13 @@
+Listing 21.1 Get-Stat Yesterday’s Average CPU Values
+
+if ($global:defaultviservers) {
+	$VMName = Read-Host "Please enter the VM Name"
+	$VM = Get-VM $VMName
+	$TodayMidnight = (Get-Date -Hour 0 -Minute 0 -Second 0)
+	$Start = $TodayMidnight.AddDays(-1).AddSeconds(1)
+	$Finish = $TodayMidnight
+	Get-Stat -Entity $VM -Stat cpu.usage.average -Start $Start -Finish $Finish
+}
+Else {
+	[System.Windows.Forms.MessageBox]::Show('You must connect to one or more hosts before you can use this node. Please click on the ''Managed Hosts'' node of the VMware PowerPack, connect to one or more of the servers you have configured there, and then try again.','Connection not established',[System.Windows.Forms.MessageBoxButtons]::OK,[System.Windows.Forms.MessageBoxIcon]::Information) | Out-Null
+}

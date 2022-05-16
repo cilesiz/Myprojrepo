@@ -1,0 +1,49 @@
+Example 1:
+
+Import-Module –Name OneGet
+
+Get-Command –Module OneGet
+
+Find-Package | Out-GridView
+
+Find-Package –Name "notepadplusplus"
+
+Find-Package –Name "7zip"
+
+Install-Package –Name "7zip"
+
+Install-Package –Name "notepadplusplus" –Force
+
+Get-Package
+
+Example 2:
+
+Uninstall-Package –Name "notepadplusplus"
+
+Uninstall-Package –Name "7zip"
+
+Example 3:
+
+Register-PSRepository -Name MyGet -SourceLocation https://www.myget.org/F/tlpowershell/api/v1 -PublishLocation https://www.myget.org/F/tlpowershell/ -InstallationPolicy Trusted
+
+Find-Package -Source MyGet
+
+Example 4:
+
+New-ModuleManifest -Path C:\Windows\System32\WindowsPowerShell\v1.0\Modules\mailboxes.psd1 -Author "Jonas Andersson" -CompanyName "Testlabs, Inc." -RootModule "mailboxes" -Description "Module that lists mailboxes" -ModuleVersion "1.0"
+
+Import-Module PowerShellGet
+
+$PSGalleryPublishUri = 'https://www.myget.org/F/tlpowershell/api/v2/package'
+
+$PSGallerySourceUri = 'https://www.myget.org/F/tlpowershell/api/v2'
+
+Publish-Module -Name mailboxes -NuGetApiKey a2d5b281-c862-4125-9523-be42ef21f55a -Repository MyGet
+
+Find-Package -Source MyGet
+
+Install-Package –Name "mailboxes" –Source MyGet
+
+Example 5:
+
+Unregister-PSRepository -Name MyGet

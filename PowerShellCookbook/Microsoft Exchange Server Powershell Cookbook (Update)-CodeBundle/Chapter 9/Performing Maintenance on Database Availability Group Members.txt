@@ -1,0 +1,19 @@
+Example 1:
+
+Set-Location $exscripts
+cd $exscripts
+
+.\StartDagServerMaintenance.ps1 -ServerName MBX1
+
+
+Example 2:
+
+.\StopDagServerMaintenance.ps1 -ServerName MBX1
+
+
+Example 3:
+
+.\RedistributeActiveDatabases.ps1 -DagName DAG `
+-BalanceDbsByActivationPreference `
+-ShowFinalDatabaseDistribution `
+-Confirm:$false

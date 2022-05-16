@@ -1,0 +1,67 @@
+###########################################################
+# PowerShell is our next generation Automation technology. 
+# 
+# PowerShell provides
+#     - An interactive and composable shell
+#     - Simple scripting
+#     - Sophisticated scripting
+#     - Systems Programming
+##########################################################
+hostname
+notepad
+# ******* Structured Cmdlets ******
+# Cmdlets are tiny .NET classes exposed as VERB-NOUN Structures
+Get-Process -ProcessName lsass
+# You only need a subset of the param and you can use aliases
+gps -p lsass
+# PowerShell supports positional parameters and wildcards
+gps l*s
+cls
+################################################################
+#
+#  PUT YOUR SEATBELTS ON !
+#
+################################################################
+
+################################################################
+#
+# What makes PowerShell truly special is OBJECT pipelines
+#
+################################################################
+Get-Process | Get-Member
+gps |Where {$_.Handles -ge 700} 
+gps |Where {$_.Handles -ge 700} |Sort Handles
+gps |Where {$_.Handles -ge 700} |Sort Handles |format-table handles,Name,des* -auto
+cls
+################################################################
+#
+#  PowerShell surfaces object stores as Namespaces
+#
+################################################################
+Get-PSDrive
+pushd HKLM:\SOFTWARE\Microsoft
+dir w*
+# PowerShell exposes the power of the underlying object stores
+cd cert:\CurrentUser\My
+dir
+# We want JUST the codesigning certs
+dir . -Recurse -CodeSigningCert
+popd;cls
+#
+##############################################################
+#
+# PowerShell is designed to support PRODUCTION SYSTEMS
+#
+##############################################################
+gps [b-t]*[g-m] |stop-process -WHATIF
+gps [b-t]*[g-m] |stop-process -CONFIRM
+cls
+###########################################################
+# PowerShell is our next generation Automation technology. 
+# 
+# PowerShell provides
+#     - An interactive and composable shell
+#     - Simple scripting
+#     - Sophisticated scripting
+#     - Systems Programming
+##########################################################

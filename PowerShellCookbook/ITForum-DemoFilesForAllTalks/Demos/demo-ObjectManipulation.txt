@@ -1,0 +1,77 @@
+#########################################################
+# PowerShell offers powerful object manipulation
+#########################################################
+# You can find out our object manipulation utlities using
+# Get-Command:
+Get-Command -Noun Object
+#########################
+# COMPARE allows rich comparisons of SETs of objects
+$g  = Get-Process
+Calc
+Notepad
+Compare $g (Get-Process) 
+# But what if I had snapshoted the processes
+$g |Export-Clixml processSnapshot.xml
+$g = Import-Clixml processSnapshot.xml
+# Notice that this won't work well because you 
+# are comparing XML with .NET
+Compare $g (Get-Process) 
+# So instead we specify how we want to compare the objects
+Compare $g (Get-Process) -Property Name,workingset
+Compare $g (Get-Process) -Property Name,{[MATH]::ROUND($_.workingset/2mb)}
+# To know how to discover Static Methods on a type:
+[Math] | Get-Member -Static
+cls
+#########################
+# Foreach assigns each object to $_ and lets you run code
+Get-Process *ss| foreach {$_.Name}
+# Now let's do that test in the foreach loop.
+# We want to find the ones whose Names end with "SS".  
+# Let's see if Get-Member can help
+"" | Gm *end*
+Get-Process | foreach {if ($_.name.EndsWith("ss")) {$_.Name}}
+# You can provide 3 scriptblocks for Foreach
+Get-Process | foreach {$t = 0} {$t += $_.handles} {"Total Handles: $t"}
+########################
+# Group creates groupings of objects
+Get-Process |Group Company |Sort name
+Get-Process |Group Company,BasePriority |Sort name
+$g = Get-Process |Group Company,BasePriority |Sort name
+$g[1]
+$g[1].Group
+# -NOELEMENT discards the incoming object which makes things
+# smaller and faster
+Get-Process |Group Company,BasePriority -noelement |Sort name
+cls
+########################
+# Measure allows you to measure properties of objects
+# With no parameters, it counts the objects
+gps |measure-object handles
+# Use parameters to specify what you would like to measure
+gps |measure-object handles -Min -Max -Ave -Sum
+# It can operate on multiple objects
+gps |measure-object handles,workingset -Min -Max -Ave -Sum
+# It respects wildcards as well
+gps |measure *size -ave -max -sum |ft -auto
+# It works against text files as well
+cat demo-ObjectManipulation.txt
+cat demo-ObjectManipulation.txt |Measure-Object -Line -word -Char
+cls
+##############################################
+# Select allows you to select a set of objects
+gps *ss|select name,handles
+gps lsass|select -expand modules
+gps lsass|select Processname -expand modules |ft processname,modulename
+gps *ss |select @{Name="Object";expression = {$_.Name}},@{Name="Resource"; Expression = {$_.Handles}} |ft -auto
+gps |select -first 4
+gps |select -last 4
+1,1,1,1,2,2,2,3,1,1,1,1 |select -unique
+##############################################
+# Where allows you to pick a subset of objects
+gps |sort handles |where {$_.handles -ge 700}
+# Where assigns the current object to $_ and then
+# runs the scriptblock which evaluates to $TRUE of $FALSE
+# If $TRUE it passes the object on, if $FALSE, it does not
+gps *ss | where {$false}
+gps *ss | where {$true}
+###### EOD ############

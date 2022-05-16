@@ -1,0 +1,37 @@
+#Powershell V2 supports Remoting
+# Let's review V1's Invoke-Expression
+Invoke-Expression hostname
+# IEX is the alias for Invoke-Expression
+# It takes a string which can be a command or a pipeline
+iex 'get-process |where {$_.handles -ge 700}'
+# Add the parameter -ComputerName and it will run on that machine
+# This takes a while to run because it has to create a connection.
+# Start a process, load the CLR, initialize PowerShell for every command.
+iex -ComputerName localhost 'get-process |where {$_.handles -ge 700}'
+# Let's be smart and just do that work once and reuse it
+$r = Get-Runspace -ComputerName localhost
+iex -r $r {get-process |where {$_.handles -ge 700}} -OV p
+# "-OV p" saved the results in the variable "P"
+$p
+# Let's inspect what came back.
+# Notice that it is a DESERIALIZED object, there are no methods 
+# and the property types are our core datatypes
+$p |Get-Member
+# This means that you can continue to manipulate them as objects
+$p |sort handles |ft Handles,Id,Name -auto
+# We can also operate against multiple machines at the same time
+$server = "10.10.10.2"
+# When you create a runspace to a remote machine you can provide
+#	- Multiple machine names
+#	- Alternate credentials
+#	- A port
+#	- UseSSL
+#	- ThrottleLimit
+#	- ShellName
+# New-Runspace -ComputerName $server -Cred ntdev\jsnover
+$r = Get-Runspace 
+$r
+iex -r $r {get-process *ss} -OV p
+# Notice that you can't tell which process came from which machine.
+# Powershell takes the objects with their origin to solve this:
+$p |sort Handles |ft PsIpHostEntry,Handles,Id,Name -auto

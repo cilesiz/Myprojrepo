@@ -1,0 +1,44 @@
+Example 1:
+
+Move-ActiveMailboxDatabase DB01 `
+-ActivateOnServer MBX2 `
+-Confirm:$false
+
+
+Example 2:
+
+Move-ActiveMailboxDatabase -Server MBX2 `
+-ActivateOnServer MBX1 `
+-Confirm:$false
+
+
+Example 3:
+
+Move-ActiveMailboxDatabase DB01 `
+-ActivateOnServer MBX1 `
+-MountDialOverride GoodAvailability `
+-Confirm:$false
+
+
+Example 4:
+
+Move-ActiveMailboxDatabase DB01 `
+-ActivateOnServer MBX1 `
+-SkipClientExperienceChecks `
+-Confirm:$false
+
+
+Example 5:
+
+Move-ActiveMailboxDatabase DB01 `
+-ActivateOnServer MBX1 `
+-SkipHealthChecks `
+-Confirm:$false
+
+
+Example 6:
+
+Move-ActiveMailboxDatabase DB01 `
+-ActivateOnServer MBX1 `
+-SkipLagChecks `
+-Confirm:$false

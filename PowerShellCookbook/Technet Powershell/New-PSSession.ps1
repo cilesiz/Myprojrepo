@@ -1,0 +1,90 @@
+﻿# ----------------------------------------------------------------------------- 
+# Script: New-PSSession.ps1 
+# Author: Brady J. Patrick 
+# Date: 05/09/2015 02:28:12 
+# Keywords: PowerShell, Remote Session, Remote Shell
+# Purpose:  To provide remote PowerShell server access
+# Signed: Yes
+# ----------------------------------------------------------------------------- 
+
+[Parameter(Mandatory=$true)] 
+$listnodes = Read-Host 'Do you want to view a list of all computers/servers joined to the domain? (Y/N)' 
+IF ($listnodes -eq "Y")
+{
+     Get-ADComputer  -Filter * | Format-List -Property Name -GroupBy ObjectClass | more 
+     [Parameter(Mandatory=$true)]
+     $name = Read-Host 'Enter Computer Name'
+     $newpssession = New-PSSession $name | Enter-PSSession
+}
+
+ELSEIF ($listnodes -eq "N")
+{
+    [Parameter(Mandatory=$true)]
+    $name = Read-Host 'Enter Computer Name'
+    New-PSSession $name | Enter-PSSession
+}
+
+# SIG # Begin signature block
+# MIILiwYJKoZIhvcNAQcCoIILfDCCC3gCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
+# gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUq97biXq1lZPKFk0W6bUwD/od
+# eRigggjrMIII5zCCBs+gAwIBAgITPQAACinn/QddzJbXRgAAAAAKKTANBgkqhkiG
+# 9w0BAQwFADBSMRMwEQYKCZImiZPyLGQBGRYDb3JnMRcwFQYKCZImiZPyLGQBGRYH
+# c2VydmxpbjEiMCAGA1UEAxMZc2Vydmxpbi1WV0lOMjAxMlNWUjAwMS1DQTAeFw0x
+# NTAxMTcyMTE2MTJaFw0xNjAxMTcyMTE2MTJaMIGnMRMwEQYKCZImiZPyLGQBGRYD
+# b3JnMRcwFQYKCZImiZPyLGQBGRYHc2VydmxpbjEOMAwGA1UEAxMFVXNlcnMxJTAj
+# BgNVBAMTHEN1c3RvbSBEb21haW4gVXNlciBDb250YWluZXIxFjAUBgNVBAMTDUJy
+# YWR5IFBhdHJpY2sxKDAmBgkqhkiG9w0BCQEWGWJyYWR5LnBhdHJpY2tAc2Vydmxp
+# bi5vcmcwggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQDaeK6aES/ODB2h
+# mYxKONIp8WCuZZaz0lIooeSGM6yhSNS3lPc9M6Z8jkznS4mQCeTLvI/caAPB0Exe
+# JTZDWfAa+pI/wSWmu4xzOwGflfUsn9LFtrxf87GBmylz/ZJiBz8WUqM2sQq3LxXU
+# XIvqDyPGknyz/JwvT1ZSCPsBSs749AD3OWe9qVl5yyx472M8sJMBIRWWHYeVpyqw
+# W41gg85wV7/8l9sFYeGa7KPQ9cRmiWLkQzSwNu6TGvF6sUUh/dvateSC+efUELLw
+# Gsu028TxzGnwdYSb32y9E2/OulFFAiLN/rhDUms+x+pQbVrHaQ/Xw6z1RMGJas1i
+# UI8Skq+9AgMBAAGjggReMIIEWjA9BgkrBgEEAYI3FQcEMDAuBiYrBgEEAYI3FQiG
+# grQ4gs2rI6mbBYaP5VaF6thKgQiF1IYlhbHhBAIBZAIBDTBnBgNVHSUEYDBeBgor
+# BgEEAYI3FAICBggrBgEFBQcDBAYIKwYBBQUHAwcGCisGAQQBgjcKAwwGCSsGAQQB
+# gjdQAQYIKwYBBQUHAwMGCCsGAQUFBwMCBgorBgEEAYI3QwECBgVngQUIAzAOBgNV
+# HQ8BAf8EBAMCB4AwfwYJKwYBBAGCNxUKBHIwcDAMBgorBgEEAYI3FAICMAoGCCsG
+# AQUFBwMEMAoGCCsGAQUFBwMHMAwGCisGAQQBgjcKAwwwCwYJKwYBBAGCN1ABMAoG
+# CCsGAQUFBwMDMAoGCCsGAQUFBwMCMAwGCisGAQQBgjdDAQIwBwYFZ4EFCAMwHQYD
+# VR0OBBYEFNNfr1zO4KN7//24K31bjlMRL2RiMB8GA1UdIwQYMBaAFIod2YmtjlVN
+# mhFJE86gebaPfdh0MIIBLwYDVR0fBIIBJjCCASIwggEeoIIBGqCCARaGgcdsZGFw
+# Oi8vL0NOPXNlcnZsaW4tVldJTjIwMTJTVlIwMDEtQ0EsQ049dldJTjIwMTJTVlIw
+# MDEsQ049Q0RQLENOPVB1YmxpYyUyMEtleSUyMFNlcnZpY2VzLENOPVNlcnZpY2Vz
+# LENOPUNvbmZpZ3VyYXRpb24sREM9c2VydmxpbixEQz1vcmc/Y2VydGlmaWNhdGVS
+# ZXZvY2F0aW9uTGlzdD9iYXNlP29iamVjdENsYXNzPWNSTERpc3RyaWJ1dGlvblBv
+# aW50hkpodHRwOi8vdldJTjIwMTJTVlIwMDEuc2Vydmxpbi5vcmcvQ2VydEVucm9s
+# bC9zZXJ2bGluLVZXSU4yMDEyU1ZSMDAxLUNBLmNybDCCAXQGCCsGAQUFBwEBBIIB
+# ZjCCAWIwgbgGCCsGAQUFBzAChoGrbGRhcDovLy9DTj1zZXJ2bGluLVZXSU4yMDEy
+# U1ZSMDAxLUNBLENOPUFJQSxDTj1QdWJsaWMlMjBLZXklMjBTZXJ2aWNlcyxDTj1T
+# ZXJ2aWNlcyxDTj1Db25maWd1cmF0aW9uLERDPXNlcnZsaW4sREM9b3JnP2NBQ2Vy
+# dGlmaWNhdGU/YmFzZT9vYmplY3RDbGFzcz1jZXJ0aWZpY2F0aW9uQXV0aG9yaXR5
+# MHEGCCsGAQUFBzAChmVodHRwOi8vdldJTjIwMTJTVlIwMDEuc2Vydmxpbi5vcmcv
+# Q2VydEVucm9sbC92V0lOMjAxMlNWUjAwMS5zZXJ2bGluLm9yZ19zZXJ2bGluLVZX
+# SU4yMDEyU1ZSMDAxLUNBLmNydDAyBggrBgEFBQcwAYYmaHR0cDovL3ZXSU4yMDEy
+# U1ZSMDAxLnNlcnZsaW4ub3JnL29jc3AwNAYDVR0RBC0wK6ApBgorBgEEAYI3FAID
+# oBsMGWJyYWR5LnBhdHJpY2tAc2Vydmxpbi5vcmcwDQYJKoZIhvcNAQEMBQADggIB
+# AKyKBvc2RjH2TzGpbj2RGDElXG02xCSf8vTzenA0N2LsLeKF7WrJ8+uUWQgKo3Qi
+# Va10N3Capuc/PEmHo9xnXKLvhlY+mTGKZY67El8Whou1EdPlBZoFok5c8vFhj4hc
+# FYxU4WGdrkgrVCh3JXruahDI8NJ2dyyD4ngvgwpaogrNRjyuJWxplNhqGEnnNrV4
+# Mmsz0Icypx1xSKnp2/IkPR74OIEkBq5Oqf4y9ifqbEwMTgA4qGlNm6luJB9ugE9W
+# qm0fmS4n7RfzlIszYinGBOb1IW+5XlbAxpS2azvttaXo0/cr+LkLmAlstJ4ungL0
+# KueRrDcaIoNUbbJpexOARJ0FHpt7nUCTnOL7sGaCkC4WqbkiRKbFToLeVEbn8KMg
+# eh1U/++loWRQjXbMd7Pzps2DqAvlA6OFmhjno9qALUnN4DQ7evvLlNzUHNZEP5QR
+# MNdl+FlNgIb3dnPi2WxeCjq5FaxUQytVTHB9fGRLrVYq6/AiA5o1oJhXr3isqdpC
+# XHlPODyyn6yeaCLQUob96ORnHnyeTr8Txm6VOxBSkIfV2+Aue4yl6cvLZX5d1jKD
+# t2THCILf/z4KJJASVmoN7YIAYmrziPvjYoQ4SgiTlihR5yQZJsKm+3AST0aShfgs
+# cZIiZLk264Y11GP2Y+nU7qfwvVT/3b5jh93XvbBtg4tdMYICCjCCAgYCAQEwaTBS
+# MRMwEQYKCZImiZPyLGQBGRYDb3JnMRcwFQYKCZImiZPyLGQBGRYHc2VydmxpbjEi
+# MCAGA1UEAxMZc2Vydmxpbi1WV0lOMjAxMlNWUjAwMS1DQQITPQAACinn/QddzJbX
+# RgAAAAAKKTAJBgUrDgMCGgUAoHgwGAYKKwYBBAGCNwIBDDEKMAigAoAAoQKAADAZ
+# BgkqhkiG9w0BCQMxDAYKKwYBBAGCNwIBBDAcBgorBgEEAYI3AgELMQ4wDAYKKwYB
+# BAGCNwIBFTAjBgkqhkiG9w0BCQQxFgQUMRPTsoVvSftijcj09t0V+ioNY7gwDQYJ
+# KoZIhvcNAQEBBQAEggEAvyRgpDBP5jJIquJk67bkqWQS8+sywIBnM5gHlk9urpOt
+# ZmTajLKS1WhYicpia0/o/WNm0kNOiMNpJH5tL/C4vIOAUhDdPyImjhTH/cITiCb1
+# eyFwJHtb+bDGNAPRZCOZ8nm8PRtnHzbpJKM1p2azvpQJOpiYydbWcyGzAt7+mRXh
+# 5i1VL7PqEN4dlmcI9P/oPp9iYpLiY6HW3GyBW090sGs0s0xBqoBHDINZp026/g4G
+# o07duJo5kNcXsJz8JNNNHBY0w448d7Y1xxTLQ9FeBQz+PkA79tUsNyfOye+Xlxif
+# V/FRmd4tB26E/2zZQdDd/NNKFLqfYtOmGTHK7RvIEA==
+# SIG # End signature block

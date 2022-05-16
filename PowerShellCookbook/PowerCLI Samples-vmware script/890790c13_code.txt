@@ -1,0 +1,79 @@
+Listing 13.1: Updating a vCenter Cluster
+
+function Update-vCenterCluster {
+
+    <#
+    .SYNOPSIS
+        Patch a cluster that contains vCenter or VUM VMs.
+    .DESCRIPTION
+        Patch a cluster that contains vCenter or VUM VMs.
+    .NOTES
+     Source:  Automating vSphere Administration
+     Authors: Luc Dekens, Arnim van Lieshout, Jonathan Medd,
+              Alan Renouf, Glenn Sizemore
+    .PARAMETER ClusterName
+        Name of cluster to patch
+    .PARAMETER BaselineName
+        Name of baseline to use for patching
+    .EXAMPLE
+        Update-vCenterCluster -ClusterName Cluster01
+         -BaselineName 'ESXi 4.0 U2 - Current'
+    #>
+
+    [CmdletBinding()]
+    Param(
+         [parameter(Mandatory=$True
+        ,    HelpMessage='Name of cluster to patch'
+        )]
+        [String]
+        $ClusterName
+    ,    
+         [parameter(Mandatory=$True
+        ,    HelpMessage='Name of baseline to use for patching'
+        )]
+        [String]
+        $BaselineName
+    )
+
+
+    $baseline = Get-Baseline -Name $BaselineName
+
+    # Find VUM server
+    $extMgr = Get-View ExtensionManager
+    $vumExt = $extMgr.ExtensionList | where {$_.Key -eq
+     "com.vmware.vcIntegrity"}
+    $vumURL = ($vumExt.Server | where {$_.Type -eq "SOAP"}).Url
+    $vumSrv = ($vumUrl.Split("/")[2]).Split(":")[0]
+    $vumSrvShort = $vumSrv.Split(".")[0]
+    $vumVM = Get-VM -Name $vumSrvShort
+
+    # Find VC server
+    $vcSrvShort = $extMgr.Client.ServiceUrl.Split("/")[2].Split
+     (".")[0]
+    $vcVM = Get-VM -Name $vcSrvShort
+
+    # Patch the cluster nodes
+    $hostTab = @{}
+    Get-Cluster -Name $ClusterName | Get-VMHost | %{
+        $hostTab[$_.Name] = $_
+    }
+
+    $hostTab.Values | %{
+        $vm = $null
+        if($_.Name -eq $vumVM.Host.Name){
+            $vm = $vumVM
+        }
+        if($_.Name -eq $vcVM.Host.Name){
+             $vm = $vcVM
+        }
+        if($vm){
+            $oldNode = $_
+            $newNode = $hostTab.Keys | where
+            {$_ -ne $oldNode.Name} | Select -First 1
+            $vumVM = $vumVM | Move-VM -Destination $newNode
+             -Confirm:$false
+        }
+        Remediate-Inventory -Entity $_ -Baseline $baseline
+    }
+
+}

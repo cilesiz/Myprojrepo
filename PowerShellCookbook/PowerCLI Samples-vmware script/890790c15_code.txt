@@ -1,0 +1,302 @@
+function Get-AggregationJobs{
+<#
+.SYNOPSIS
+  Returns the SQL jobs that perform vCenter statistical data aggregation
+.DESCRIPTION
+  The function takes all SQL jobs in the "Stats Rollup" category
+  and returns key data for each of the jobs
+.NOTES
+  Authors:  Luc Dekens
+.PARAMETER SqlServer
+  Name of the SQL server where the vSphere database is hosted 
+.EXAMPLE
+  PS> Get-AggregationJobs "serverA"
+#>
+
+  param(
+    [parameter(mandatory = $true,
+      HelpMessage = "Enter the name of the vCenter SQL server")]
+    [string]$SqlServer)
+  
+  [System.Reflection.Assembly]::LoadWithPartialName('Microsoft.SqlServer.SMO') | `
+    out-null
+  $sqlSRv = new-object ('Microsoft.SqlServer.Management.Smo.Server') $sqlServer 
+
+  $sqlSrv.JobServer.Jobs | `
+    where {$_.Category -eq "Stats Rollup"} | %{
+    New-Object PSObject -Property @{
+      Name = $_.Name
+      Description = $_.Description
+      LastRun = $_.LastRunDate
+      NextRun = $_.NextRunDate
+      LastRunResult = $_.LastRunOutcome
+      "Schedule(s)" = $_.JobSchedules | %{$_.Name}
+    }
+  }
+}
+
+function Set-StatIntervalLevel{
+  <#
+.SYNOPSIS
+  Change the statistics level of a Historical Interval
+.DESCRIPTION
+  The function changes the statistics level, specified in $Name,
+  to a new level, specified in $Level.
+  The new statistics level can not be higher than the statistics
+  level of the previous Historical Interval
+.NOTES
+  Authors:  Luc Dekens
+.PARAMETER Interval
+  The Historical Interval for which you want to change the level
+.PARAMETER Level
+  New statistics level
+.EXAMPLE
+  PS> Set-StatIntervalLevel -Interval (Get-StatInterval -Name "Past week") -Level 3
+.EXAMPLE
+  PS> Get-StatInterval -Name "Past day" | Set-StatIntervalLevel -Level 4
+#>
+
+  param(
+  [parameter(valuefrompipeline = $true, mandatory = $true,
+  HelpMessage = "Enter the name of the interval")]
+  [VMware.VimAutomation.Types.StatInterval]$Interval,
+  [parameter(mandatory = $true,
+  HelpMessage = "Enter the new level of the Historical Interval")]
+  [string]$Level)
+
+  begin{
+    $perfMgr = Get-View (Get-View ServiceInstance).content.perfManager
+  }
+
+  process{
+    $intervalSDK = $perfMgr.historicalInterval | where {$_.Name -eq $Interval.Name}
+    $intervalSDK.Level = $level
+    $perfMgr.UpdatePerfInterval($intervalSDK)
+  }
+
+  end{}
+}
+
+function Get-StatTypeDetail{
+  <#
+.SYNOPSIS
+  Returns available metrics for an entity
+.DESCRIPTION
+  The function returns the available metrics for a specific entity.
+  Entities can be ESX(i) host, clusters, resource pools or virtual
+  machines.
+  The function can return the available metrics for all the
+  historical intervals together or for the realtime interval
+.NOTES
+  Authors:  Luc Dekens
+.PARAMETER Entity
+  The entity for which the metrics should be returned
+.PARAMETER Realtime
+  Switch to select the realtime metrics
+.EXAMPLE
+  PS> Get-StatTypeDetail -Entity (Get-VM "Guest1")
+.EXAMPLE
+  PS> Get-StatTypeDetail -Entity (Get-VMHost "esx41") -Realtime
+.EXAMPLE
+  PS> Get-VM "Guest1" | Get-StatTypeDetail
+#>
+
+  param(
+  [parameter(valuefrompipeline = $true, mandatory = $true,
+  HelpMessage = "Enter an entity")]
+  [VMware.VimAutomation.Types.VIObject[]]$Entity,
+  [switch]$Realtime)
+  begin{
+# Create performance counter hashtables
+    $perfMgr = Get-View (Get-View ServiceInstance).content.perfManager
+    $pcTable = New-Object Hashtable
+    $keyTable = New-Object Hashtable
+    foreach($pC in $perfMgr.PerfCounter){
+      if($pC.Level -ne 99){
+        $pCKey = $pC.GroupInfo.Key + "." + $pC.NameInfo.Key + "." + $pC.RollupType
+        $pCKey = $pCKey.ToLower()
+        if(!$pctable.ContainsKey($pCKey)){
+          $pctable.Add($pcKey,$pC.Key)
+        }
+      }
+    }
+  }
+  
+  process{
+    if($Entity){
+      $entSDK = $entity | Get-View
+    }
+    else{
+      $entSDK = $_ | Get-View
+    }
+
+# Get the metrics
+    $entSDK | %{
+      $metrics = $perfMgr.QueryAvailablePerfMetric($entSDK.MoRef,
+                                                   $null,
+                                                   $null,
+                                                   $numinterval)
+      $metricsNoInstances = $metrics | where {$_.Instance -eq ""}
+      $metricslist = @()
+      foreach($pmId in $metricsNoInstances){
+        $row = "" | select Group, Name, Rollup, Id, Level, Type, Unit
+        $pC = $keyTable[$pmId.CounterId]
+        $row.Group = $pC.GroupInfo.Key
+        $row.Name = $pC.NameInfo.Key
+        $row.Rollup = $pC.RollupType
+        $row.Id = $pC.Key
+        $row.Level = $pC.Level
+        $row.Type = $pC.StatsType
+        $row.Unit = $pC.UnitInfo.Key
+        $metricslist += $row
+      }
+    }
+  }
+  end{
+    $metricslist | Sort-Object -Property Group,Name,Rollup
+  }
+}
+
+function Get-StatInstances{
+  <#
+.SYNOPSIS
+  Returns the available instances for a specific metric and entity
+.DESCRIPTION
+  The function returns all the available instances for a metric on an
+  entity. The entity can be one an ESX(i) host, a cluster, a resource pool 
+  or a virtual machine.
+.NOTES
+  Authors:  Luc Dekens
+.PARAMETER Entity
+  The entity or entities for which the instances should be returned
+.PARAMETER Stat
+  The metric or metrics for which the instances should be returned
+.PARAMETER Realtime
+  Switch to select the realtime metrics
+.EXAMPLE
+  PS> Get-StatInstances -Entity (Get-VM "Guest1") -Stat "cpu.usage.average"
+.EXAMPLE
+  PS> Get-StatInstances -Entity $esx -Stat "cpu.usage.average" -Realtime
+.EXAMPLE
+  PS> Get-VMHost MyEsx | Get-StatInstances -Stat "disk.devicelatency.average"
+#>
+
+  param(
+  [parameter(valuefrompipeline = $true, mandatory = $true,
+  HelpMessage = "Enter an entity")]
+  [PSObject[]]$Entity,
+  [parameter(mandatory=$true,
+  HelpMessage = "Enter a metric")]
+  [string[]]$Stat,
+  [switch]$Realtime)
+
+  begin{
+# Create performance counter hashtables
+    $perfMgr = Get-View (Get-View ServiceInstance).content.perfManager
+    $pcTable = New-Object Hashtable
+    foreach($pC in $perfMgr.PerfCounter){
+      if($pC.Level -ne 99){
+        $pCKey = ($pC.GroupInfo.Key + "." + $pC.NameInfo.Key + "." + `
+                                      $pC.RollupType)
+        $pCKey = $pCKey.ToLower()
+        if(!$pctable.ContainsKey($pCKey)){
+          $pctable.Add($pcKey,$pC.Key)
+        }
+      }
+    }
+  }
+
+  process{
+    if($Entity){
+      $entSDK = $entity | Get-View
+    }
+    else{
+      $entSDK = $_ | Get-View
+    }
+
+# Handle the Realtime switch
+    $numinterval = $null
+    if($Realtime){
+      $provSum = $perfMgr.QueryPerfProviderSummary($entSDK.MoRef)
+      $numinterval = $provSum.refreshRate
+    }
+
+# Get the metrics for the entity
+    $entSDK | %{
+      $metrics += $perfMgr.QueryAvailablePerfMetric($_.MoRef,
+                                                    $null,
+                                                    $null,
+                                                    $numinterval)
+
+# Check is stat is valid
+      foreach($st in $stat){
+        if(!$pcTable.ContainsKey($st.ToLower())){
+          Throw "-Stat parameter $st is invalid."
+        }
+        else{
+          $ids += $pcTable[$st]
+        }
+        foreach($metric in $metrics){
+          if($metric.CounterId -eq $pcTable[$st.ToLower()]){
+            New-Object PSObject -Property @{
+              StatName = $st
+              Instance = $metric.Instance
+            }
+          }
+        }
+      }
+    }
+  }
+
+  end{}
+}
+
+function Get-StatReference{
+  <#
+.SYNOPSIS
+  Creates a HTML reference of all the available metrics
+.DESCRIPTION
+  The function returns a simple HTML page which contains all the
+  available metrics in the environment where you are connected.
+.NOTES
+  Authors:  Luc Dekens
+.EXAMPLE
+  PS> Get-StatReference | Out-File "$env:temp\metricRef.html"
+#>
+
+  begin{
+# In API 4.0 there is a bug.
+# There are 4 duplicate metrics that only differ in the case
+# These are excluded with the -notcontains condition
+    $badMetrics = "mem.reservedcapacity.average",
+      "cpu.reservedcapacity.average",
+      "managementAgent.swapin.average",
+      "managementAgent.swapout.average"
+    $perfMgr = Get-View (Get-View ServiceInstance).content.perfManager
+  }
+  
+  process{
+# Create performance counter hashtables
+    $metricRef = foreach($pC in $perfMgr.PerfCounter){
+      if($pC.Level -ne 99){
+        $pCKey = ($pC.GroupInfo.Key + "." + $pC.NameInfo.Key + "." + `
+                                     $pC.RollupType)
+        if($badMetrics -notcontains $pCKey){
+          $pCKey = $pCKey.ToLower()
+          New-Object PSObject -Property @{
+            Metric = $PCKey
+            Level = $pC.Level
+            Unit = $pC.UnitInfo.Label
+            Description = $pC.NameInfo.Summary
+          }
+        }
+      }
+    }
+  }
+  
+  end{
+    $metricRef | Sort-Object -Property Metric | `
+      ConvertTo-Html -Property Metric,Level,Unit,Description
+  }
+}
+

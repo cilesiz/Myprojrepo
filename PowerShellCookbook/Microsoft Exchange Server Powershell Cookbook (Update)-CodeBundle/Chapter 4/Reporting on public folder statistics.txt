@@ -1,0 +1,13 @@
+Example 1:
+
+Get-Mailbox -PublicFolder | Get-MailboxStatistics | Select DisplayName,TotalItemSize
+
+
+Example 2:
+
+Get-PublicFolderStatistics | ft Name,ItemCount,TotalItemSize,TotalDeletedItemSize,FolderPath,MailboxOwnerId -AutoSize
+
+
+Example 3:
+
+Get-PublicFolderStatistics | Select Name,ItemCount,TotalItemSize,TotalDeletedItemSize,FolderPath,MailboxOwnerId | Export-CSV C:\pf.csv -Notype

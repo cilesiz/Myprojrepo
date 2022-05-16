@@ -1,0 +1,75 @@
+<ActionDescription Class="Group" DisplayName="Client Tools on Deployment" MnemonicDisplayName="Client Tools on Deployment" Description="Created by RC Tools Editor" SqmDataPoint="53">
+<ShowOn>
+	<string>ContextMenu</string>
+</ShowOn>
+<ActionGroups>
+
+	<ActionDescription Class="Executable" DisplayName="Change Cache Size" MnemonicDisplayName="Change Cache Size" Description="Change Cache Size">
+		<ShowOn>
+			<string>ContextMenu</string>
+		</ShowOn>
+		<Executable>
+			<FilePath>"wscript.exe"</FilePath>
+			<Parameters>"C:\Program Files\SCCMConsoleExtensions\SilentOpenPS.vbs" "C:\Program Files\SCCMConsoleExtensions\Deployment Launcher.ps1" "Change Cache Size" "##SUB:SoftwareName##" "##SUB:DeploymentID##" "##SUB:AssignmentID##" "##SUB:FeatureType##" "##SUB:__Server##" "##SUB:__Namespace##"</Parameters>
+		</Executable>
+	</ActionDescription>
+
+	<ActionDescription Class="Executable" DisplayName="Clear Client Cache" MnemonicDisplayName="Clear Client Cache" Description="Clear Client Cache">
+		<ShowOn>
+			<string>ContextMenu</string>
+		</ShowOn>
+		<Executable>
+			<FilePath>"wscript.exe"</FilePath>
+			<Parameters>"C:\Program Files\SCCMConsoleExtensions\SilentOpenPS.vbs" "C:\Program Files\SCCMConsoleExtensions\Deployment Launcher.ps1" "Clear Client Cache" "##SUB:SoftwareName##" "##SUB:DeploymentID##" "##SUB:AssignmentID##" "##SUB:FeatureType##" "##SUB:__Server##" "##SUB:__Namespace##"</Parameters>
+		</Executable>
+	</ActionDescription>
+
+	<ActionDescription Class="Executable" DisplayName="Rerun Deployment" MnemonicDisplayName="Rerun Deployment" Description="Rerun Deployment">
+		<ShowOn>
+			<string>ContextMenu</string>
+		</ShowOn>
+		<Executable>
+			<FilePath>"wscript.exe"</FilePath>
+			<Parameters>"C:\Program Files\SCCMConsoleExtensions\SilentOpenPS.vbs" "C:\Program Files\SCCMConsoleExtensions\Deployment Launcher.ps1" "Rerun Deployment" "##SUB:SoftwareName##" "##SUB:DeploymentID##" "##SUB:AssignmentID##" "##SUB:FeatureType##" "##SUB:__Server##" "##SUB:__Namespace##"</Parameters>
+		</Executable>
+	</ActionDescription>
+
+	<ActionDescription Class="Executable" DisplayName="Restart SMS Agent Host Service" MnemonicDisplayName="Restart SMS Agent Host Service" Description="Restart SMS Agent Host Service">
+		<ShowOn>
+			<string>ContextMenu</string>
+		</ShowOn>
+		<Executable>
+			<FilePath>"wscript.exe"</FilePath>
+			<Parameters>"C:\Program Files\SCCMConsoleExtensions\SilentOpenPS.vbs" "C:\Program Files\SCCMConsoleExtensions\Deployment Launcher.ps1" "Restart SMS Agent Host Service" "##SUB:SoftwareName##" "##SUB:DeploymentID##" "##SUB:AssignmentID##" "##SUB:FeatureType##" "##SUB:__Server##" "##SUB:__Namespace##"</Parameters>
+		</Executable>
+	</ActionDescription>
+
+	<ActionDescription Class="Separator">
+		<ShowOn>
+			<string>ContextMenu</string>
+		</ShowOn>
+	</ActionDescription>
+
+	<ActionDescription Class="Executable" DisplayName="Repair Client" MnemonicDisplayName="Repair Client" Description="Repair Client">
+		<ShowOn>
+			<string>ContextMenu</string>
+		</ShowOn>
+		<Executable>
+			<FilePath>"wscript.exe"</FilePath>
+			<Parameters>"C:\Program Files\SCCMConsoleExtensions\SilentOpenPS.vbs" "C:\Program Files\SCCMConsoleExtensions\Deployment Launcher.ps1" "Repair Client" "##SUB:SoftwareName##" "##SUB:DeploymentID##" "##SUB:AssignmentID##" "##SUB:FeatureType##" "##SUB:__Server##" "##SUB:__Namespace##"</Parameters>
+		</Executable>
+	</ActionDescription>
+
+	<ActionDescription Class="Executable" DisplayName="Uninstall Client" MnemonicDisplayName="Uninstall Client" Description="Uninstall Client">
+		<ShowOn>
+			<string>ContextMenu</string>
+		</ShowOn>
+		<Executable>
+			<FilePath>"wscript.exe"</FilePath>
+			<Parameters>"C:\Program Files\SCCMConsoleExtensions\SilentOpenPS.vbs" "C:\Program Files\SCCMConsoleExtensions\Deployment Launcher.ps1" "Uninstall Client" "##SUB:SoftwareName##" "##SUB:DeploymentID##" "##SUB:AssignmentID##" "##SUB:FeatureType##" "##SUB:__Server##" "##SUB:__Namespace##"</Parameters>
+		</Executable>
+	</ActionDescription>
+
+	</ActionGroups>
+</ActionDescription>
+

@@ -1,0 +1,11 @@
+get-process lsass
+get-process lsass |fl *
+get-process lsass |Select -Expand Modules -ea silentlycontinue
+get-process lsass |Select ProcessName -Expand Modules -ea silentlycontinue |ft ProcessName,ModuleName
+get-process |Select ProcessName -Expand Modules -ea silentlycontinue |Group ModuleName |sort count |select -last 10 -ov a
+$a[9]
+$a[9].Group |Ft ProcessName
+
+
+
+

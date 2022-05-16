@@ -1,0 +1,23 @@
+Example 1:
+
+Install-WindowsFeature ADLDS
+
+Setup.exe /mode:Install /role:EdgeTransport /IAcceptExchangeServerLicenseTerms
+
+New-EdgeSubscription -FileName C:\Edge.xml
+
+New-EdgeSubscription -FileData ([byte[]]$(Get-Content -Path "C:\temp\Edge.xml" -Encoding Byte -ReadCount 0)) -Site "Default-First-Site-Name"
+
+Get-SendConnector | ft -AutoSize
+
+
+Example 2:
+
+Start-EdgeSynchronization -Verbose
+
+Test-EdgeSynchronization
+
+
+Example 3:
+
+Start-EdgeSynchronization -ForceFullSync

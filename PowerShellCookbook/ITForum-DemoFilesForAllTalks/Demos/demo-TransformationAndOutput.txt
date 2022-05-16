@@ -1,0 +1,60 @@
+#############################################################
+# PowerShell has utilities to transform and output object
+#############################################################
+# Formatting converts object into formating records
+# Formatting commands look for and use predefined views
+gps *ss |Format-Table
+cls
+# You can predefine views and ask for them
+gps |sort PriorityClass |Format-Table -View Priority
+cls
+# You can define a PROPERTYSET which is a named set of properties
+# for an object and use that in formatting
+gps *ss |Get-Member -Type propertyset
+gps *ss |Format-Table PSResources
+cls
+# You can ask for just what you want:
+gps |sort product,Name |format-Table -GroupBy Product Name,Description 
+cls
+# 
+gps |format-wide
+gps |format-wide -Column 4
+# As a general rule you can specifiy scriptblocks in place of properties
+gps |format-Wide -Column 4 {$_.name.ToUpper() + "/" + $_.id}
+cls
+# Format list shows you things as a list
+gps lsass |format-List
+cls
+# Just to restate - FORMATING produces FORMAT RECORDS not STRINGS
+# The host (Powershell.exe) turns them into STRINGS by calling 
+# Out-default behind the scenes
+gps lsass |format-List |Get-Member
+#############################################################
+# Outputting is the act of transforming formating objects to a 
+# device specific action.  If you send "object" to an out command
+# it will call a default formatter for that object
+gps *ss |format-table |out-host
+gps *ss |out-host
+$s = gps *ss |out-string
+$s
+$s.Toupper()
+gps *ss |out-file -encoding Ascii foo.txt
+cat foo.txt
+#############################################################
+# Export/Import converts objects into and out of file formats
+gps *ss |export-clixml t.xml
+import-clixml t.xml 
+gps *ss |export-csv t.csv
+import-csv t.csv
+cls
+# Notice the size difference between CSV and XML
+dir t.csv,t.xml
+# That said, notice this:
+Import-clixml t.xml |sort handles |ft name,handles -auto
+Import-csv t.csv |sort handles |ft name,handles -auto
+#############################################################
+# Converto converts objects into other objects
+gps *ss |convertto-Html
+gps *ss |select name,id,handles | convertto-Html -Title "PowerShell Rocks!" -Body "<H1>Info about *SS</H1>" > t.htm
+ii t.htm
+######EOD#####
